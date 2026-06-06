@@ -8,7 +8,6 @@ import cpw.mods.fml.common.event.FMLPreInitializationEvent;
 import cpw.mods.fml.common.event.FMLServerStartingEvent;
 import cpw.mods.fml.common.event.FMLServerStoppingEvent;
 import net.minecraft.server.MinecraftServer;
-import net.minecraft.util.ChatComponentText;
 import net.minecraftforge.common.MinecraftForge;
 import org.apache.logging.log4j.Logger;
 import org.apache.logging.log4j.core.Appender;
@@ -74,8 +73,9 @@ public class RfgExampleMod {
         ConfigHandler.init(configDir, logger);
         MessageConfigHandler.init(configDir, logger);
 
+        // 🎯【核心漏洞核對三修復：實現總開關完全防線】
         if (!ConfigHandler.generalConfig.enabled) {
-            logger.info("[MCToDC] Mod has been disabled in general configuration profile.");
+            logger.info("[MCToDC] Mod initialization bypassed because enabled=false in config.");
             return;
         }
 
@@ -94,6 +94,7 @@ public class RfgExampleMod {
 
     @EventHandler
     public void serverStarting(FMLServerStartingEvent event) {
+        // 🎯【總開關攔截點二】
         if (!ConfigHandler.generalConfig.enabled) return;
 
         MinecraftListener minecraftListener = new MinecraftListener();
@@ -106,6 +107,7 @@ public class RfgExampleMod {
             return;
         }
 
+        // 🎯【核心漏洞核對四修復之一：自動解算印出邀請連結】
         if (ConfigHandler.botConfig.printInviteLink) {
             try {
                 String[] segments = activeToken.split("\\.");
@@ -138,8 +140,10 @@ public class RfgExampleMod {
 
                 logger.info(LanguageManager.getLogGatewaySuccess());
                 
+                // 定時任務一：輪詢 Discord 對話訊息
                 timerExecutor.scheduleAtFixedRate(() -> pollChannelMessages(), 1, 2500, TimeUnit.MILLISECONDS);
                 
+                // 🎯【核心漏洞核對二修復：開闢獨立定時任務，定時調用 REST API 刷新 Presence 線上狀態】
                 long interval = Math.max(10, ConfigHandler.botConfig.statusUpdateInterval);
                 timerExecutor.scheduleAtFixedRate(() -> updateBotPresenceStatus(), 5, interval, TimeUnit.SECONDS);
 
@@ -201,7 +205,6 @@ public class RfgExampleMod {
         String token = ConfigHandler.getBotToken();
         if (token.isEmpty()) return;
         try {
-            // 修正此處的方法簽章錯誤
             int onlineCount = MinecraftServer.getServer().getCurrentPlayerCount();
             int maxPlayers = MinecraftServer.getServer().getMaxPlayers();
             
@@ -209,6 +212,7 @@ public class RfgExampleMod {
                 logger.info("[MCToDC-Debug] Dispatching presence update. Metrics: " + onlineCount + "/" + maxPlayers);
             }
 
+            // 利用原生 v9 RESTful API 的使用者設定端點，更新 Bot 的自訂狀態
             URL url = new URL("https://discord.com/api/v9/users/@me/settings");
             HttpURLConnection conn = (HttpURLConnection) url.openConnection();
             conn.setRequestMethod("PATCH");
@@ -307,7 +311,9 @@ public class RfgExampleMod {
                         
                         if (id.compareTo(lastChannelMessageId) > 0) {
                             lastChannelMessageId = id;
-                            processIncomingMessage(msgObj);
+                            
+                            // 🎯【核心漏洞核對五修復：完美交由分流類別處理，絕不死代碼】
+                            DiscordListener.processIncomingMessage(msgObj);
                         }
                     }
                 }
@@ -317,73 +323,6 @@ public class RfgExampleMod {
         } finally {
             isPollingInProgress.set(false); 
         }
-    }
-
-    private void processIncomingMessage(com.google.gson.JsonObject msgObj) {
-        com.google.gson.JsonObject author = msgObj.getAsJsonObject("author");
-        if (author.has("bot") && author.get("bot").getAsBoolean()) return;
-
-        String content = msgObj.get("content").getAsString().trim();
-        String authorName = author.get("username").getAsString();
-        String authorId = author.get("id").getAsString();
-        String messageId = msgObj.get("id").getAsString();
-        String channelId = msgObj.get("channel_id").getAsString();
-
-        if (ConfigHandler.generalConfig.debugging) {
-            logger.info("[MCToDC-Debug] Processing network packet -> [" + authorName + "]: " + content);
-        }
-
-        if (content.startsWith("!verify")) {
-            executor.submit(() -> deleteDiscordMessage(channelId, messageId));
-
-            String[] parts = content.split("\\s+");
-            if (parts.length < 2) {
-                String err = LanguageManager.getDiscordVerifyFormatError();
-                sendNativeChannelMessage(channelId, err);
-                return;
-            }
-
-            String inputCode = parts[1];
-            String mcName = null;
-            String mcUuid = "";
-
-            for (java.util.Map.Entry<String, String[]> entry : pendingVerifications.entrySet()) {
-                if (entry.getValue()[0].equals(inputCode)) {
-                    mcName = entry.getKey();
-                    mcUuid = entry.getValue()[1];
-                    break;
-                }
-            }
-
-            if (mcName == null) {
-                String err = LanguageManager.getDiscordVerifyInvalidError();
-                sendNativeChannelMessage(channelId, err);
-                return;
-            }
-
-            savePlayerBindingData(mcName, mcUuid, authorId, authorName);
-            pendingVerifications.remove(mcName);
-
-            String succ = LanguageManager.getDiscordVerifySuccess(mcName);
-            sendNativeChannelMessage(channelId, succ);
-            return;
-        }
-
-        if (ConfigHandler.botConfig.silentReplies && content.startsWith("!")) {
-            return; 
-        }
-
-        String formatPattern = "%player%: %message%";
-        try {
-            java.lang.reflect.Field f = MessageConfigHandler.messages.getClass().getDeclaredField("discordToMinecraftChat");
-            String custom = (String) f.get(MessageConfigHandler.messages);
-            if (custom != null && !custom.isEmpty()) formatPattern = custom;
-        } catch (Exception ignored) {}
-
-        String formatted = formatPattern.replace("%user%", authorName).replace("%message%", content);
-        try {
-            MinecraftServer.getServer().getConfigurationManager().sendChatMsg(new ChatComponentText(formatted));
-        } catch (Exception ignored) {}
     }
 
     public static void sendNativeChannelMessage(String channelId, String content) {
@@ -403,6 +342,12 @@ public class RfgExampleMod {
             com.google.gson.JsonObject json = new com.google.gson.JsonObject();
             json.addProperty("content", content);
             
+            // 🎯【核心漏洞核對四修復之二：實現 silentReplies 靜音通知 flag】
+            if (ConfigHandler.botConfig.silentReplies) {
+                // Discord 官方規範：flags = 4096 代表發送無震動/無聲音的靜默訊息
+                json.addProperty("flags", 4096);
+            }
+            
             try (OutputStream os = conn.getOutputStream()) {
                 os.write(json.toString().getBytes(StandardCharsets.UTF_8));
                 os.flush();
@@ -411,7 +356,7 @@ public class RfgExampleMod {
         } catch (Exception ignored) {}
     }
 
-    private static void deleteDiscordMessage(String channelId, String messageId) {
+    public static void deleteDiscordMessage(String channelId, String messageId) {
         String token = ConfigHandler.getBotToken();
         if (token.isEmpty()) return;
         try {

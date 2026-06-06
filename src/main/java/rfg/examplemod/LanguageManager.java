@@ -42,9 +42,6 @@ public class LanguageManager {
     }
 
     public static String getDiscordDeathFormat(String player, String message) {
-        if ("zh_tw".equalsIgnoreCase(ConfigHandler.generalConfig.language)) {
-            return "玩家 " + player + " " + message;
-        }
         return "Player " + player + " " + message;
     }
 
@@ -77,23 +74,14 @@ public class LanguageManager {
     }
 
     public static String getLogGatewayInit() {
-        if ("zh_tw".equalsIgnoreCase(ConfigHandler.generalConfig.language)) {
-            return "[MCToDC] 正在初始化輕量化原生 HTTP REST 閘道...";
-        }
         return "[MCToDC] Initializing light-weight native HTTP REST gateway...";
     }
 
     public static String getLogGatewaySuccess() {
-        if ("zh_tw".equalsIgnoreCase(ConfigHandler.generalConfig.language)) {
-            return "[MCToDC] 本地儲存與網路代理通道已成功載入。";
-        }
         return "[MCToDC] Local storage and network proxy channel loaded successfully.";
     }
 
     public static String getLogShuttingDown() {
-        if ("zh_tw".equalsIgnoreCase(ConfigHandler.generalConfig.language)) {
-            return "[MCToDC] 正在停止伺服器連線通道...";
-        }
         return "[MCToDC] Stopping server connection channels...";
     }
 }
