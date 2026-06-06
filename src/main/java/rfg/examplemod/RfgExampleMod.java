@@ -25,6 +25,7 @@ import java.nio.charset.StandardCharsets;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.PreparedStatement;
+import java.util.Base64;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
@@ -62,7 +63,6 @@ public class RfgExampleMod {
     private static File bindFile;
     private static String lastChannelMessageId = "0";
     
-    // // TODO: 建立 HTTP 429 防洪防爆動態原子鎖與冷卻機制
     private static final AtomicBoolean isPollingInProgress = new AtomicBoolean(false);
     private static long coolDownUntil = 0L;
 
@@ -71,11 +71,12 @@ public class RfgExampleMod {
         logger = event.getModLog();
         File configDir = event.getModConfigurationDirectory();
 
-        try {
-            ConfigHandler.init(configDir, logger);
-            MessageConfigHandler.init(configDir, logger);
-        } catch (Exception e) {
-            logger.error("Config initialization failed: " + e.getMessage());
+        ConfigHandler.init(configDir, logger);
+        MessageConfigHandler.init(configDir, logger);
+
+        if (!ConfigHandler.generalConfig.enabled) {
+            logger.info("[MCToDC] Mod has been disabled in general configuration profile.");
+            return;
         }
 
         bindFile = new File(configDir, "mctodc-bnd.json");
@@ -83,7 +84,7 @@ public class RfgExampleMod {
             try {
                 String content = new String(java.nio.file.Files.readAllBytes(bindFile.toPath()), StandardCharsets.UTF_8);
                 boundPlayers = new com.google.gson.JsonParser().parse(content).getAsJsonObject();
-            } catch (Exception e) { logger.error("Failed to parse local binding database json"); }
+            } catch (Exception e) { logger.error("[MCToDC] Parsing error on local configuration json file."); }
         }
 
         if (ConfigHandler.chatConfig.sendConsoleMessages) {
@@ -93,14 +94,29 @@ public class RfgExampleMod {
 
     @EventHandler
     public void serverStarting(FMLServerStartingEvent event) {
+        if (!ConfigHandler.generalConfig.enabled) return;
+
         MinecraftListener minecraftListener = new MinecraftListener();
         MinecraftForge.EVENT_BUS.register(minecraftListener);
         FMLCommonHandler.instance().bus().register(minecraftListener);
 
         String activeToken = ConfigHandler.getBotToken();
         if (activeToken.isEmpty() || ConfigHandler.channelsConfig.chatChannelID.equals("0")) {
-            logger.warn("Bot connection configurations incomplete, proxy service aborted.");
+            logger.warn("[MCToDC] Configuration fields are invalid. Service lifecycle aborted.");
             return;
+        }
+
+        if (ConfigHandler.botConfig.printInviteLink) {
+            try {
+                String[] segments = activeToken.split("\\.");
+                if (segments.length > 0) {
+                    String decodedId = new String(Base64.getDecoder().decode(segments[0]), StandardCharsets.UTF_8);
+                    if (decodedId.matches("\\d+")) {
+                        logger.info("[MCToDC] Discord Application Authorization URL Link generated:");
+                        logger.info("-> https://discord.com/api/oauth2/authorize?client_id=" + decodedId + "&permissions=82944&scope=bot");
+                    }
+                }
+            } catch (Exception ignored) {}
         }
 
         if (ConfigHandler.databaseConfig.useRemoteSQL) {
@@ -109,11 +125,7 @@ public class RfgExampleMod {
 
         executor.submit(() -> {
             try {
-                if ("zh_tw".equalsIgnoreCase(ConfigHandler.generalConfig.language)) {
-                    logger.info("[MCToDC] 正在初始化輕量化原生 HTTP REST 閘道...");
-                } else {
-                    logger.info("[MCToDC] Initializing light-weight native HTTP REST gateway...");
-                }
+                logger.info(LanguageManager.getLogGatewayInit());
                 
                 System.setProperty("https.protocols", "TLSv1.2,TLSv1.3");
                 System.setProperty("jdk.tls.client.protocols", "TLSv1.2,TLSv1.3");
@@ -124,24 +136,22 @@ public class RfgExampleMod {
                 }
                 sendNativeChannelMessage(ConfigHandler.channelsConfig.chatChannelID, activeNotice);
 
-                if ("zh_tw".equalsIgnoreCase(ConfigHandler.generalConfig.language)) {
-                    logger.info("[MCToDC] 本地資料庫與安全代理閘道已成功加載完畢。");
-                } else {
-                    logger.info("[MCToDC] Server has loaded local database and secure proxy channel successfully.");
-                }
+                logger.info(LanguageManager.getLogGatewaySuccess());
                 
                 timerExecutor.scheduleAtFixedRate(() -> pollChannelMessages(), 1, 2500, TimeUnit.MILLISECONDS);
-            } catch (Exception e) { logger.error("Gateway link error: " + e.getMessage()); }
+                
+                long interval = Math.max(10, ConfigHandler.botConfig.statusUpdateInterval);
+                timerExecutor.scheduleAtFixedRate(() -> updateBotPresenceStatus(), 5, interval, TimeUnit.SECONDS);
+
+            } catch (Exception e) { logger.error("[MCToDC] Gateway connection thread execution error: " + e.getMessage()); }
         });
     }
 
     @EventHandler
     public void serverStopping(FMLServerStoppingEvent event) {
-        if ("zh_tw".equalsIgnoreCase(ConfigHandler.generalConfig.language)) {
-            logger.info("[MCToDC] 伺服器正在關閉...");
-        } else {
-            logger.info("[MCToDC] Server is shutting down...");
-        }
+        if (!ConfigHandler.generalConfig.enabled) return;
+
+        logger.info(LanguageManager.getLogShuttingDown());
 
         String stopNotice = "";
         if (MessageConfigHandler.messages != null && MessageConfigHandler.messages.discordServerStopped != null && !MessageConfigHandler.messages.discordServerStopped.isEmpty()) {
@@ -157,13 +167,19 @@ public class RfgExampleMod {
         try { 
             timerExecutor.shutdown(); 
             executor.shutdown(); 
-        } catch (Exception e) {}
+        } catch (Exception ignored) {}
     }
 
     private static void setupRemoteSQLTable() {
         try {
-            Class.forName("com.mysql.jdbc.Driver");
-            // 呼叫具備自癒防禦功能的輕量化對接鏈
+            try {
+                Class.forName("com.mysql.jdbc.Driver");
+            } catch (ClassNotFoundException e) {
+                logger.error("[MCToDC] MySQL JDBC driver dependency missing. Remote integration aborted. Using fallback storage profile.");
+                ConfigHandler.databaseConfig.useRemoteSQL = false;
+                return;
+            }
+
             try (Connection conn = DriverManager.getConnection(ConfigHandler.databaseConfig.sqlUrl, ConfigHandler.databaseConfig.sqlUser, ConfigHandler.databaseConfig.sqlPassword)) {
                 String query = "CREATE TABLE IF NOT EXISTS `" + ConfigHandler.databaseConfig.sqlTableName + "` (" +
                         "`username` VARCHAR(64) NOT NULL, " +
@@ -173,12 +189,47 @@ public class RfgExampleMod {
                         "PRIMARY KEY (`username`), KEY `uuid_idx` (`uuid`)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;";
                 try (PreparedStatement stmt = conn.prepareStatement(query)) {
                     stmt.executeUpdate();
-                    logger.info("[MCToDC] Relational SQL table structure synchronized successfully.");
+                    logger.info("[MCToDC] Remote database storage schema verified.");
                 }
             }
         } catch (Exception e) {
-            logger.error("[MCToDC] SQL integration initialization error (Will fallback to JSON): " + e.getMessage());
+            logger.error("[MCToDC] Failed to initialize SQL database table mapping: " + e.getMessage());
         }
+    }
+
+    private static void updateBotPresenceStatus() {
+        String token = ConfigHandler.getBotToken();
+        if (token.isEmpty()) return;
+        try {
+            // 修正此處的方法簽章錯誤
+            int onlineCount = MinecraftServer.getServer().getCurrentPlayerCount();
+            int maxPlayers = MinecraftServer.getServer().getMaxPlayers();
+            
+            if (ConfigHandler.generalConfig.debugging) {
+                logger.info("[MCToDC-Debug] Dispatching presence update. Metrics: " + onlineCount + "/" + maxPlayers);
+            }
+
+            URL url = new URL("https://discord.com/api/v9/users/@me/settings");
+            HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+            conn.setRequestMethod("PATCH");
+            conn.setDoOutput(true);
+            conn.setRequestProperty("Authorization", "Bot " + token);
+            conn.setRequestProperty("Content-Type", "application/json");
+            conn.setRequestProperty("User-Agent", "DiscordBot (Minecraft 1.7.10, Native-REST)");
+            conn.setConnectTimeout(2000);
+            conn.setReadTimeout(2000);
+
+            com.google.gson.JsonObject json = new com.google.gson.JsonObject();
+            com.google.gson.JsonObject status = new com.google.gson.JsonObject();
+            status.addProperty("custom_status", "Online: " + onlineCount + "/" + maxPlayers);
+            json.add("status", status);
+
+            try (OutputStream os = conn.getOutputStream()) {
+                os.write(json.toString().getBytes(StandardCharsets.UTF_8));
+                os.flush();
+            }
+            conn.getResponseCode();
+        } catch (Exception ignored) {}
     }
 
     public static void savePlayerBindingData(String username, String uuid, String discordId, String discordName) {
@@ -197,7 +248,7 @@ public class RfgExampleMod {
                         }
                     }
                 } catch (Exception e) {
-                    logger.error("[MCToDC] Failed to execute remote SQL data insertion: " + e.getMessage());
+                    logger.error("[MCToDC] Failed to upload database mapping entry: " + e.getMessage());
                 }
             });
         }
@@ -214,15 +265,12 @@ public class RfgExampleMod {
         String channelId = ConfigHandler.channelsConfig.chatChannelID;
         if (channelId == null || channelId.equals("0") || channelId.isEmpty()) return;
         
-        // 🚀【防洪限流防禦一】：如果目前處於 429 被處罰冷卻期，直接跳過不打 API
         long now = System.currentTimeMillis();
         if (now < coolDownUntil) return;
 
-        // 🚀【防洪限流防禦二】：利用原子鎖確保同時間只有一個 HTTP Poll 請求在飛，防止請求堆積卡死
         if (!isPollingInProgress.compareAndSet(false, true)) return;
 
         try {
-            // 透過 limit=10 配合動態歷史指針優化頻寬
             URL url = new URL("https://discord.com/api/v9/channels/" + channelId + "/messages?limit=10");
             HttpURLConnection conn = (HttpURLConnection) url.openConnection();
             conn.setRequestMethod("GET");
@@ -233,10 +281,9 @@ public class RfgExampleMod {
 
             int responseCode = conn.getResponseCode();
             
-            // 🚀【防洪限流防禦三】：如果遇到 HTTP 429 Rate Limited，啟動極端防禦避險
             if (responseCode == 429) {
-                coolDownUntil = System.currentTimeMillis() + 15000L; // 自動進入 15 秒物理冷卻
-                logger.warn("[MCToDC] ⚠️ Detected Discord HTTP 429 Rate Limit. Entering cooling down defense for 15s.");
+                coolDownUntil = System.currentTimeMillis() + 15000L; 
+                logger.warn("[MCToDC] HTTP 429 encountered. Request pipeline throttling activated for 15s.");
                 return;
             }
 
@@ -258,7 +305,6 @@ public class RfgExampleMod {
                         com.google.gson.JsonObject msgObj = messages.get(i).getAsJsonObject();
                         String id = msgObj.get("id").getAsString();
                         
-                        // 動態時間指針判斷：只有比上次收到的 ID 更全新的訊息才放行處理
                         if (id.compareTo(lastChannelMessageId) > 0) {
                             lastChannelMessageId = id;
                             processIncomingMessage(msgObj);
@@ -267,10 +313,9 @@ public class RfgExampleMod {
                 }
             }
         } catch (Exception e) {
-            // 萬一發生網路波動異常，給予輕微冷卻保護
             coolDownUntil = System.currentTimeMillis() + 3000L;
         } finally {
-            isPollingInProgress.set(false); // 解鎖
+            isPollingInProgress.set(false); 
         }
     }
 
@@ -284,18 +329,16 @@ public class RfgExampleMod {
         String messageId = msgObj.get("id").getAsString();
         String channelId = msgObj.get("channel_id").getAsString();
 
+        if (ConfigHandler.generalConfig.debugging) {
+            logger.info("[MCToDC-Debug] Processing network packet -> [" + authorName + "]: " + content);
+        }
+
         if (content.startsWith("!verify")) {
             executor.submit(() -> deleteDiscordMessage(channelId, messageId));
 
             String[] parts = content.split("\\s+");
             if (parts.length < 2) {
-                String err = "";
-                if (MessageConfigHandler.messages != null && MessageConfigHandler.messages.discordVerifyFormatError != null && !MessageConfigHandler.messages.discordVerifyFormatError.isEmpty()) {
-                    err = MessageConfigHandler.messages.discordVerifyFormatError;
-                }
-                if (err.isEmpty()) {
-                    err = LanguageManager.getDiscordVerifyFormatError();
-                }
+                String err = LanguageManager.getDiscordVerifyFormatError();
                 sendNativeChannelMessage(channelId, err);
                 return;
             }
@@ -313,13 +356,7 @@ public class RfgExampleMod {
             }
 
             if (mcName == null) {
-                String err = "";
-                if (MessageConfigHandler.messages != null && MessageConfigHandler.messages.discordVerifyInvalidError != null && !MessageConfigHandler.messages.discordVerifyInvalidError.isEmpty()) {
-                    err = MessageConfigHandler.messages.discordVerifyInvalidError;
-                }
-                if (err.isEmpty()) {
-                    err = LanguageManager.getDiscordVerifyInvalidError();
-                }
+                String err = LanguageManager.getDiscordVerifyInvalidError();
                 sendNativeChannelMessage(channelId, err);
                 return;
             }
@@ -327,16 +364,13 @@ public class RfgExampleMod {
             savePlayerBindingData(mcName, mcUuid, authorId, authorName);
             pendingVerifications.remove(mcName);
 
-            String succ = "";
-            if (MessageConfigHandler.messages != null && MessageConfigHandler.messages.discordVerifySuccess != null && !MessageConfigHandler.messages.discordVerifySuccess.isEmpty()) {
-                succ = MessageConfigHandler.messages.discordVerifySuccess;
-            }
-            if (succ.isEmpty()) {
-                succ = LanguageManager.getDiscordVerifySuccess(mcName);
-            }
-            String response = succ.replace("%user%", mcName);
-            sendNativeChannelMessage(channelId, response);
+            String succ = LanguageManager.getDiscordVerifySuccess(mcName);
+            sendNativeChannelMessage(channelId, succ);
             return;
+        }
+
+        if (ConfigHandler.botConfig.silentReplies && content.startsWith("!")) {
+            return; 
         }
 
         String formatPattern = "%player%: %message%";
@@ -344,12 +378,12 @@ public class RfgExampleMod {
             java.lang.reflect.Field f = MessageConfigHandler.messages.getClass().getDeclaredField("discordToMinecraftChat");
             String custom = (String) f.get(MessageConfigHandler.messages);
             if (custom != null && !custom.isEmpty()) formatPattern = custom;
-        } catch (Exception e) {}
+        } catch (Exception ignored) {}
 
         String formatted = formatPattern.replace("%user%", authorName).replace("%message%", content);
         try {
             MinecraftServer.getServer().getConfigurationManager().sendChatMsg(new ChatComponentText(formatted));
-        } catch (Exception e) {}
+        } catch (Exception ignored) {}
     }
 
     public static void sendNativeChannelMessage(String channelId, String content) {
@@ -374,7 +408,7 @@ public class RfgExampleMod {
                 os.flush();
             }
             conn.getResponseCode();
-        } catch (Exception e) {}
+        } catch (Exception ignored) {}
     }
 
     private static void deleteDiscordMessage(String channelId, String messageId) {
@@ -389,7 +423,7 @@ public class RfgExampleMod {
             conn.setRequestProperty("Authorization", "Bot " + token);
             conn.setRequestProperty("User-Agent", "DiscordBot (Minecraft 1.7.10, Native-REST)");
             conn.getResponseCode();
-        } catch (Exception e) {}
+        } catch (Exception ignored) {}
     }
 
     private void setupConsoleAppender() {
@@ -436,12 +470,12 @@ public class RfgExampleMod {
             conn.setRequestProperty("Content-Type", "application/json; charset=utf-8");
             try (OutputStream os = conn.getOutputStream()) { os.write(payload); os.flush(); }
             conn.getResponseCode();
-        } catch (Exception e) {} finally { if (conn != null) conn.disconnect(); }
+        } catch (Exception ignored) {} finally { if (conn != null) conn.disconnect(); }
     }
 
     public static synchronized void saveBinds() {
         if (bindFile == null) return;
-        try { java.nio.file.Files.write(bindFile.toPath(), boundPlayers.toString().getBytes(StandardCharsets.UTF_8)); } catch (Exception e) {}
+        try { java.nio.file.Files.write(bindFile.toPath(), boundPlayers.toString().getBytes(StandardCharsets.UTF_8)); } catch (Exception ignored) {}
     }
 
     public static ExecutorService getExecutor() { return executor; }

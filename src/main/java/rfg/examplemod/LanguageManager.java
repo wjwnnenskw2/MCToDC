@@ -2,81 +2,98 @@ package rfg.examplemod;
 
 public class LanguageManager {
 
-    public static String getMcKickReason(String code) {
-        if ("zh_tw".equalsIgnoreCase(ConfigHandler.generalConfig.language)) {
-            return "§c 您尚未通過 Discord 綁定驗證！\n\n" +
-                   "§e請前往伺服器 Discord 聯動頻道\n" +
-                   "§e輸入驗證指令：§b!verify " + code + "\n\n" +
-                   "";
-        }
-        return "§c You have not verified your account on Discord yet!\n\n" +
-               "§ePlease go to our Discord link channel\n" +
-               "§eand type the verify command: §b!verify " + code + "\n\n" +
-               "";
-    }
-
-    public static String getDiscordPlayerJoined(String username, String discordName) {
-        if ("zh_tw".equalsIgnoreCase(ConfigHandler.generalConfig.language)) {
-            return "**" + username + "** 進入了伺服器 ";
-        }
-        return "**" + username + "** joined the server! ";
-    }
-
-    public static String getDiscordPlayerLeft(String username) {
-        if ("zh_tw".equalsIgnoreCase(ConfigHandler.generalConfig.language)) {
-            return "**" + username + "** 離開了伺服器";
-        }
-        return "**" + username + "** left the server";
-    }
-
-    public static String getDiscordChatFormat(String username, String message) {
-        return "**" + username + "**: " + message;
-    }
-
-    public static String getDiscordDeathFormat(String username, String deathMessage) {
-        return "**" + username + "** " + deathMessage;
-    }
-
     public static String getDiscordServerStarted() {
         if ("zh_tw".equalsIgnoreCase(ConfigHandler.generalConfig.language)) {
-            return "**伺服器已開啟。**";
+            return "伺服器聊天橋接器已成功初始化。";
         }
-        return "**Server has started!** Bridge gateway online.";
+        return "Server chat bridge has been initialized successfully.";
     }
 
     public static String getDiscordServerStopped() {
         if ("zh_tw".equalsIgnoreCase(ConfigHandler.generalConfig.language)) {
-            return "**伺服器已關閉。**";
+            return "伺服器已安全關閉。";
         }
-        return "**Server has been shut down.**";
+        return "Server has been stopped safely.";
+    }
+
+    public static String getMcKickReason(String code) {
+        if ("zh_tw".equalsIgnoreCase(ConfigHandler.generalConfig.language)) {
+            return "[MCToDC] 您的帳號尚未通過 Discord 進服驗證。\n\n請加入我們的 Discord 伺服器並在指定頻道輸入以下指令：\n!verify " + code;
+        }
+        return "[MCToDC] You are not verified via Discord yet.\n\nPlease join our Discord server and use the command in the channel:\n!verify " + code;
+    }
+
+    public static String getDiscordPlayerJoined(String player, String discordName) {
+        if ("zh_tw".equalsIgnoreCase(ConfigHandler.generalConfig.language)) {
+            return "玩家 " + player + " (Discord: " + discordName + ") 已加入伺服器。";
+        }
+        return "Player " + player + " (Discord: " + discordName + ") joined the server.";
+    }
+
+    public static String getDiscordPlayerLeft(String player) {
+        if ("zh_tw".equalsIgnoreCase(ConfigHandler.generalConfig.language)) {
+            return "玩家 " + player + " 已離開伺服器。";
+        }
+        return "Player " + player + " left the server.";
+    }
+
+    public static String getDiscordChatFormat(String player, String message) {
+        return "[" + player + "]: " + message;
+    }
+
+    public static String getDiscordDeathFormat(String player, String message) {
+        if ("zh_tw".equalsIgnoreCase(ConfigHandler.generalConfig.language)) {
+            return "玩家 " + player + " " + message;
+        }
+        return "Player " + player + " " + message;
+    }
+
+    public static String getDiscordAchievementFormat(String player, String achievement) {
+        if ("zh_tw".equalsIgnoreCase(ConfigHandler.generalConfig.language)) {
+            return "玩家 " + player + " 獲得了成就: [" + achievement + "]";
+        }
+        return "Player " + player + " earned the achievement: [" + achievement + "]";
     }
 
     public static String getDiscordVerifyFormatError() {
         if ("zh_tw".equalsIgnoreCase(ConfigHandler.generalConfig.language)) {
-            return "**驗證失敗**：格式錯誤！請使用 `!verify <四位數驗證碼>`。";
+            return "驗證錯誤: 指令格式無效。請使用 `!verify [4位數驗證碼]`";
         }
-        return "**Verification Failed**: Invalid format! Please use `!verify <4-digit code>`.";
+        return "Verification error: Invalid command format. Use `!verify [4-digit code]`";
     }
 
     public static String getDiscordVerifyInvalidError() {
         if ("zh_tw".equalsIgnoreCase(ConfigHandler.generalConfig.language)) {
-            return "**驗證失敗**：無效的驗證碼，或者該玩家目前不在線上快取中。";
+            return "驗證錯誤: 驗證碼無效或已過期。";
         }
-        return "**Verification Failed**: Invalid token, or player cache has expired.";
+        return "Verification error: Code is invalid or has expired.";
     }
 
-    public static String getDiscordVerifySuccess(String username) {
+    public static String getDiscordVerifySuccess(String player) {
         if ("zh_tw".equalsIgnoreCase(ConfigHandler.generalConfig.language)) {
-            return "**驗證成功**：您的 Discord 帳號已成功與遊戲 ID **" + username + "** 鎖定綁定！現在可以進服開玩囉！";
+            return "驗證成功: 帳號已成功綁定玩家 " + player + "。白名單已更新。";
         }
-        return "**Verification Success**: Your Discord account has been linked to **" + username + "**! You can join the server now.";
+        return "Verification success: Account bound to player " + player + ". Whitelist updated.";
     }
 
-    // 🎯【TODO: 新增成就多語系支援】
-    public static String getDiscordAchievementFormat(String username, String achievementName) {
+    public static String getLogGatewayInit() {
         if ("zh_tw".equalsIgnoreCase(ConfigHandler.generalConfig.language)) {
-            return "**" + username + "** 獲得了成就：[" + achievementName + "]";
+            return "[MCToDC] 正在初始化輕量化原生 HTTP REST 閘道...";
         }
-        return "**" + username + "** has just earned the achievement: [" + achievementName + "]";
+        return "[MCToDC] Initializing light-weight native HTTP REST gateway...";
+    }
+
+    public static String getLogGatewaySuccess() {
+        if ("zh_tw".equalsIgnoreCase(ConfigHandler.generalConfig.language)) {
+            return "[MCToDC] 本地儲存與網路代理通道已成功載入。";
+        }
+        return "[MCToDC] Local storage and network proxy channel loaded successfully.";
+    }
+
+    public static String getLogShuttingDown() {
+        if ("zh_tw".equalsIgnoreCase(ConfigHandler.generalConfig.language)) {
+            return "[MCToDC] 正在停止伺服器連線通道...";
+        }
+        return "[MCToDC] Stopping server connection channels...";
     }
 }

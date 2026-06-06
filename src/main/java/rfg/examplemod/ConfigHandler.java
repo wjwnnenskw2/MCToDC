@@ -70,7 +70,7 @@ public class ConfigHandler {
             try {
                 writeDefaultConfig();
             } catch (IOException e) {
-                e.printStackTrace();
+                logger.error("[MCToDC] Failed to generate configuration file: " + e.getMessage());
             }
         }
         loadConfig();
@@ -78,13 +78,38 @@ public class ConfigHandler {
 
     private static void writeDefaultConfig() throws IOException {
         try (BufferedWriter writer = new BufferedWriter(new OutputStreamWriter(new FileOutputStream(configFile), StandardCharsets.UTF_8))) {
-            writer.write("# MCToDC - Infrastructure Config\n\n");
-            writer.write("[general]\nenabled = true\ndebugging = false\nlanguage = \"en_us\" # Available: en_us, zh_tw\nconfigVersion = 30\n\n");
-            writer.write("[botConfig]\nbotToken = \"\"\nprintInviteLink = true\nsilentReplies = true\nstatusUpdateInterval = 30\n\n");
-            writer.write("[channelsAndWebhooks]\n[channelsAndWebhooks.channels]\nchatChannelID = \"0\"\nconsoleChannelID = \"0\"\n\n");
-            writer.write("[channelsAndWebhooks.webhooks]\nchatWebhook = \"\"\nconsoleWebhook = \"\"\n\n");
-            writer.write("[chat]\nsendConsoleMessages = false\nsendCommandMessages = false\n\n");
-            writer.write("[database]\nuseRemoteSQL = false\nsqlUrl = \"jdbc:mysql://localhost:3306/minecraft_db?useSSL=false&serverTimezone=UTC\"\nsqlUser = \"root\"\nsqlPassword = \"\"\nsqlTableName = \"mctodc_whitelist\"\n");
+            writer.write("# MCToDC Infrastructure Configuration Profile\n\n");
+            
+            writer.write("[general]\n");
+            writer.write("enabled = true\n");
+            writer.write("debugging = false\n");
+            writer.write("language = \"en_us\" # Supported: en_us, zh_tw\n");
+            writer.write("configVersion = 30\n\n");
+            
+            writer.write("[botConfig]\n");
+            writer.write("botToken = \"\"\n");
+            writer.write("printInviteLink = true\n");
+            writer.write("silentReplies = true\n");
+            writer.write("statusUpdateInterval = 30\n\n");
+            
+            writer.write("[channelsAndWebhooks]\n");
+            writer.write("[channelsAndWebhooks.channels]\n");
+            writer.write("chatChannelID = \"0\"\n");
+            writer.write("consoleChannelID = \"0\"\n\n");
+            writer.write("[channelsAndWebhooks.webhooks]\n");
+            writer.write("chatWebhook = \"\"\n");
+            writer.write("consoleWebhook = \"\"\n\n");
+            
+            writer.write("[chat]\n");
+            writer.write("sendConsoleMessages = false\n");
+            writer.write("sendCommandMessages = false\n\n");
+            
+            writer.write("[database]\n");
+            writer.write("useRemoteSQL = false\n");
+            writer.write("sqlUrl = \"jdbc:mysql://localhost:3306/minecraft_db?useSSL=false&serverTimezone=UTC\"\n");
+            writer.write("sqlUser = \"root\"\n");
+            writer.write("sqlPassword = \"\"\n");
+            writer.write("sqlTableName = \"mctodc_whitelist\"\n");
         }
     }
 
@@ -109,23 +134,11 @@ public class ConfigHandler {
                         actualBotToken = decrypt(encryptedData, hwKey);
                     } catch (Exception e) {
                         actualBotToken = "";
-                        // 🎯【預設英文，zh_tw 分流提示】
-                        if ("zh_tw".equalsIgnoreCase(generalConfig.language)) {
-                            logger.error("==================================================================");
-                            logger.error("[MCToDC] ⚠️ 安全密鑰解密失敗！偵測到目前硬體特徵與加密時不符。");
-                            logger.error("[MCToDC] 提示：若您更換了主機、網卡、或更換至 Docker 容器，請刪除");
-                            logger.error("[MCToDC] config/ 資料夾底下的隱藏金鑰檔案，並重新於 toml 填入明文 Token。");
-                            logger.error("==================================================================");
-                        } else {
-                            logger.error("==================================================================");
-                            logger.error("[MCToDC] ⚠️ Decryption failed! Hardware baseline signature mismatched.");
-                            logger.error("[MCToDC] Notice: If you migrated hosts, changed NICs, or restarted in Docker,");
-                            logger.error("[MCToDC] please delete the hidden secret asset under config/ and refill plain token.");
-                            logger.error("==================================================================");
-                        }
+                        logger.error("[MCToDC] Configuration decryption failed. Hardware environment signature mismatch.");
+                        logger.error("[MCToDC] Resolution: Delete '.mctodc-secret' and update the token value in the configuration file.");
                     }
                 } else {
-                    logger.error("[MCToDC] Secure container asset (.mctodc-secret) missed. Reset your plain token in toml.");
+                    logger.error("[MCToDC] Security storage file missing. Please update token configuration.");
                 }
             } else if (rawToken != null && !rawToken.isEmpty()) {
                 actualBotToken = rawToken;
@@ -136,8 +149,7 @@ public class ConfigHandler {
                     String tomlContent = new String(Files.readAllBytes(configFile.toPath()), StandardCharsets.UTF_8);
                     String obfuscatedContent = tomlContent.replace("botToken = \"" + rawToken + "\"", "botToken = \"ENCRYPTED_AND_LOADED\"");
                     Files.write(configFile.toPath(), obfuscatedContent.getBytes(StandardCharsets.UTF_8));
-                    logger.info("[MCToDC] Plain token encrypted with hardware baseline successfully.");
-                } catch (Exception e) {}
+                } catch (Exception ignored) {}
             }
 
             botConfig.printInviteLink = config.getBoolean("botConfig.printInviteLink", true);
@@ -168,16 +180,11 @@ public class ConfigHandler {
                         databaseConfig.sqlPassword = decrypt(encryptedPw, hwKey);
                     } catch (Exception e) {
                         databaseConfig.sqlPassword = "";
-                        // 🎯【預設英文，zh_tw 分流提示】
-                        if ("zh_tw".equalsIgnoreCase(generalConfig.language)) {
-                            logger.error("[MCToDC] 資料庫安全密碼解密失敗，主機硬體特徵不匹配。請還原 database.sqlPassword 設定。");
-                        } else {
-                            logger.error("[MCToDC] SQL Password decryption failed due to hardware signatures mismatch. Please reset database.sqlPassword.");
-                        }
+                        logger.error("[MCToDC] Database credential decryption failed. Mismatched environment profile.");
                     }
                 } else {
                     databaseConfig.sqlPassword = "";
-                    logger.error("[MCToDC] Secure database asset (.mctodc-db-secret) missed. Reset your plain password in toml.");
+                    logger.error("[MCToDC] Database secure storage file missing. Fallback initiated.");
                 }
             } else if (rawSqlPassword != null && !rawSqlPassword.isEmpty()) {
                 databaseConfig.sqlPassword = rawSqlPassword;
@@ -186,19 +193,17 @@ public class ConfigHandler {
 
                 try {
                     String tomlContent = new String(Files.readAllBytes(configFile.toPath()), StandardCharsets.UTF_8);
-                    String obfuscatedContent = tomlContent.replace("sqlPassword = \"\"\"", "sqlPassword = \"ENCRYPTED_AND_LOADED\"")
-                                                          .replace("sqlPassword = \"" + rawSqlPassword + "\"", "sqlPassword = \"ENCRYPTED_AND_LOADED\"");
+                    String obfuscatedContent = tomlContent.replace("sqlPassword = \"" + rawSqlPassword + "\"", "sqlPassword = \"ENCRYPTED_AND_LOADED\"");
                     Files.write(configFile.toPath(), obfuscatedContent.getBytes(StandardCharsets.UTF_8));
-                    logger.info("[MCToDC] Plaintext SQL password has been securely obfuscated on disk.");
                 } catch (Exception e) {
-                    logger.error("[MCToDC] Failed to overwrite plaintext SQL password: " + e.getMessage());
+                    logger.error("[MCToDC] Encrypted credential writing failed: " + e.getMessage());
                 }
             } else {
                 databaseConfig.sqlPassword = "";
             }
 
         } catch (Exception e) {
-            logger.error("[MCToDC] Config parsing failure: " + e.getMessage());
+            logger.error("[MCToDC] Configuration parsing exception: " + e.getMessage());
         }
     }
 

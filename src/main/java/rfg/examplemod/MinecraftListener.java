@@ -6,6 +6,7 @@ import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.entity.player.EntityPlayerMP;
 import net.minecraft.stats.StatisticsFile;
 import net.minecraft.util.ChatComponentTranslation;
+import net.minecraftforge.event.CommandEvent;
 import net.minecraftforge.event.ServerChatEvent;
 import net.minecraftforge.event.entity.living.LivingDeathEvent;
 import net.minecraftforge.event.entity.player.AchievementEvent;
@@ -19,6 +20,8 @@ public class MinecraftListener {
 
     @SubscribeEvent
     public void onPlayerJoin(PlayerEvent.PlayerLoggedInEvent event) {
+        if (!ConfigHandler.generalConfig.enabled) return;
+
         if (!(event.player instanceof EntityPlayerMP)) return;
         
         final EntityPlayerMP player = (EntityPlayerMP) event.player;
@@ -31,13 +34,11 @@ public class MinecraftListener {
             String discordIdFromSQL = "";
 
             if (ConfigHandler.databaseConfig.useRemoteSQL) {
-                // // TODO: 實作 JDBC 連線長休逾時與隨機斷線的防禦自癒重連機制
                 int maxRetries = 2;
                 while (maxRetries > 0) {
                     try {
                         Class.forName("com.mysql.jdbc.Driver");
                         try (Connection conn = DriverManager.getConnection(ConfigHandler.databaseConfig.sqlUrl, ConfigHandler.databaseConfig.sqlUser, ConfigHandler.databaseConfig.sqlPassword)) {
-                            // 主動對資料庫發送活性探針（2秒內若無回應或已過期，則視為死連線）
                             if (conn != null && conn.isValid(2)) {
                                 String query = "SELECT `discord_id`, `discord_name` FROM `" + ConfigHandler.databaseConfig.sqlTableName + "` WHERE `username` = ? OR `uuid` = ? LIMIT 1;";
                                 try (PreparedStatement stmt = conn.prepareStatement(query)) {
@@ -51,17 +52,17 @@ public class MinecraftListener {
                                         }
                                     }
                                 }
-                                break; // 執行成功，直接跳出重試循環
+                                break; 
                             } else {
-                                throw new java.sql.SQLException("Stale or invalid JDBC link detected.");
+                                throw new java.sql.SQLException("Stale connections detected.");
                             }
                         }
                     } catch (Exception e) {
                         maxRetries--;
                         if (maxRetries == 0) {
-                            RfgExampleMod.logger.error("[MCToDC] Asynchronous SQL check failure after retries: " + e.getMessage());
+                            RfgExampleMod.logger.error("[MCToDC] Query verification transaction tracking failure: " + e.getMessage());
                         } else {
-                            try { Thread.sleep(500); } catch (Exception ignored) {} // 微小延遲後執行連線自癒
+                            try { Thread.sleep(500); } catch (Exception ignored) {} 
                         }
                     }
                 }
@@ -75,8 +76,7 @@ public class MinecraftListener {
                     playerData.addProperty("uuid", uuid);
                     RfgExampleMod.boundPlayers.add(username, playerData);
                     RfgExampleMod.saveBinds();
-                    RfgExampleMod.logger.info("[MCToDC] Successfully backfilled remote SQL data into local JSON cache for player: " + username);
-                } catch (Exception e) {}
+                } catch (Exception ignored) {}
             }
 
             if (!isVerified) {
@@ -84,7 +84,7 @@ public class MinecraftListener {
                     isVerified = true;
                     try {
                         discordName = RfgExampleMod.boundPlayers.getAsJsonObject(username).get("discordName").getAsString();
-                    } catch (Exception e) {}
+                    } catch (Exception ignored) {}
                 }
             }
 
@@ -102,7 +102,7 @@ public class MinecraftListener {
                         java.lang.reflect.Field f = MessageConfigHandler.messages.getClass().getDeclaredField("playerJoined");
                         String custom = (String) f.get(MessageConfigHandler.messages);
                         if (custom != null && !custom.trim().isEmpty()) formatPattern = custom;
-                    } catch (Exception e2) {}
+                    } catch (Exception ignored) {}
                 }
 
                 if (formatPattern.isEmpty()) {
@@ -119,10 +119,9 @@ public class MinecraftListener {
                     if (player.playerNetServerHandler != null) {
                         String kickReason = LanguageManager.getMcKickReason(code);
                         player.playerNetServerHandler.kickPlayerFromServer(kickReason);
-                        RfgExampleMod.logger.info("[MCToDC] Kicked unverified player: " + username + " with temp code: " + code);
                     }
                 } catch (Exception e) {
-                    RfgExampleMod.logger.error("[MCToDC] Disconnection execution fault: " + e.getMessage());
+                    RfgExampleMod.logger.error("[MCToDC] Exception during player connection drop tracking: " + e.getMessage());
                 }
             }
         });
@@ -130,6 +129,8 @@ public class MinecraftListener {
 
     @SubscribeEvent
     public void onPlayerLeave(PlayerEvent.PlayerLoggedOutEvent event) {
+        if (!ConfigHandler.generalConfig.enabled) return;
+
         final String username = event.player.getCommandSenderName();
         if (RfgExampleMod.pendingVerifications.containsKey(username)) {
             return; 
@@ -146,7 +147,7 @@ public class MinecraftListener {
                     java.lang.reflect.Field f = MessageConfigHandler.messages.getClass().getDeclaredField("playerLeft");
                     String custom = (String) f.get(MessageConfigHandler.messages);
                     if (custom != null && !custom.trim().isEmpty()) formatPattern = custom;
-                } catch (Exception e2) {}
+                } catch (Exception ignored) {}
             }
 
             if (formatPattern.isEmpty()) {
@@ -160,6 +161,8 @@ public class MinecraftListener {
 
     @SubscribeEvent
     public void onServerChat(ServerChatEvent event) {
+        if (!ConfigHandler.generalConfig.enabled) return;
+
         final String username = event.username;
         final String message = event.message;
 
@@ -178,7 +181,7 @@ public class MinecraftListener {
                         java.lang.reflect.Field f = MessageConfigHandler.messages.getClass().getDeclaredField("chat");
                         String custom = (String) f.get(MessageConfigHandler.messages);
                         if (custom != null && !custom.trim().isEmpty()) formatPattern = custom;
-                    } catch (Exception e2) {}
+                    } catch (Exception ignored) {}
                 }
 
                 if (formatPattern.isEmpty()) {
@@ -193,6 +196,8 @@ public class MinecraftListener {
 
     @SubscribeEvent
     public void onPlayerDeath(LivingDeathEvent event) {
+        if (!ConfigHandler.generalConfig.enabled) return;
+
         if (event.entityLiving instanceof EntityPlayer) {
             final EntityPlayer player = (EntityPlayer) event.entityLiving;
             final String username = player.getCommandSenderName();
@@ -221,7 +226,7 @@ public class MinecraftListener {
                         java.lang.reflect.Field f = MessageConfigHandler.messages.getClass().getDeclaredField("death");
                         String custom = (String) f.get(MessageConfigHandler.messages);
                         if (custom != null && !custom.trim().isEmpty()) formatPattern = custom;
-                    } catch (Exception e2) {}
+                    } catch (Exception ignored) {}
                 }
 
                 if (formatPattern.isEmpty()) {
@@ -236,6 +241,8 @@ public class MinecraftListener {
 
     @SubscribeEvent
     public void onPlayerAchievement(AchievementEvent event) {
+        if (!ConfigHandler.generalConfig.enabled) return;
+
         if (event.entityPlayer == null || event.achievement == null) return;
         if (!(event.entityPlayer instanceof EntityPlayerMP)) return;
         
@@ -256,7 +263,7 @@ public class MinecraftListener {
                         java.lang.reflect.Field f = MessageConfigHandler.messages.getClass().getDeclaredField("discordAchievement");
                         String custom = (String) f.get(MessageConfigHandler.messages);
                         if (custom != null && !custom.trim().isEmpty()) formatPattern = custom;
-                    } catch (Exception e) {}
+                    } catch (Exception ignored) {}
 
                     if (formatPattern.isEmpty()) {
                         formatPattern = LanguageManager.getDiscordAchievementFormat(username, achievementName);
@@ -267,5 +274,44 @@ public class MinecraftListener {
                 });
             }
         }
+    }
+
+    @SubscribeEvent
+    public void onCommand(CommandEvent event) {
+        if (!ConfigHandler.generalConfig.enabled) return;
+        if (!ConfigHandler.chatConfig.sendCommandMessages) return;
+        if (event.sender == null || event.command == null) return;
+
+        final String senderName = event.sender.getCommandSenderName();
+        final String commandName = event.command.getCommandName();
+        
+        StringBuilder sb = new StringBuilder("/").append(commandName);
+        if (event.parameters != null) {
+            for (String param : event.parameters) {
+                sb.append(" ").append(param);
+            }
+        }
+        final String rawCommandFull = sb.toString();
+
+        RfgExampleMod.getExecutor().submit(() -> {
+            String lower = commandName.toLowerCase();
+            if (lower.contains("login") || lower.contains("register") || lower.contains("passwd") || lower.contains("auth")) {
+                String securedPayload = "`/" + commandName + " ****** (Sensitive parameters hidden)`";
+                sendSecuredAdminCommandMessage(senderName, securedPayload);
+                return;
+            }
+
+            sendSecuredAdminCommandMessage(senderName, "`" + rawCommandFull + "`");
+        });
+    }
+
+    private void sendSecuredAdminCommandMessage(String sender, String payload) {
+        String consoleChannelId = ConfigHandler.channelsConfig.consoleChannelID;
+        if (consoleChannelId == null || consoleChannelId.equals("0") || consoleChannelId.isEmpty()) {
+            consoleChannelId = ConfigHandler.channelsConfig.chatChannelID;
+        }
+        
+        String formatted = "[Command Log] " + sender + " executed: " + payload;
+        RfgExampleMod.sendNativeChannelMessage(consoleChannelId, formatted);
     }
 }
