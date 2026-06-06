@@ -9,7 +9,6 @@ import java.net.URL;
 import java.nio.charset.StandardCharsets;
 
 public class DiscordListener {
-    
     private static String lastChannelMessageId = "0";
 
     public static void pollChannelMessages() {
@@ -52,7 +51,6 @@ public class DiscordListener {
         } catch (Exception e) {
             if (ConfigHandler.generalConfig.debugging) {
                 RfgExampleMod.logger.error("[MCToDC] Poll Error: " + e.getMessage());
-                e.printStackTrace();
             }
         }
     }
@@ -150,8 +148,6 @@ public class DiscordListener {
             conn.setRequestMethod("DELETE");
             conn.setRequestProperty("Authorization", "Bot " + ConfigHandler.getBotToken());
             conn.getResponseCode();
-        } catch (Exception e) {
-            if (ConfigHandler.generalConfig.debugging) e.printStackTrace();
-        }
+        } catch (Exception e) {}
     }
 }

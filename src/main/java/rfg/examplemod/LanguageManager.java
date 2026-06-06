@@ -1,7 +1,6 @@
 package rfg.examplemod;
 
 public class LanguageManager {
-
     public static String getMcKickReason(String code) {
         String notice = MessageConfigHandler.messages.minecraftLoginPanelNotice;
         String instruction = MessageConfigHandler.messages.minecraftLoginPanelInstruction;
@@ -11,7 +10,6 @@ public class LanguageManager {
         if (instruction == null || instruction.isEmpty()) instruction = "Please check your verification code and enter the command in the Discord channel:";
         if (footer == null || footer.isEmpty()) footer = "Action will be automatically un-restricted upon successful linking.";
 
-        // 使用 Minecraft 原生顏色代碼 § 進行排版
         return "§c" + notice + "\n\n" +
                "§e" + instruction + "\n" +
                "§b!verify " + code + "\n\n" +
@@ -66,7 +64,6 @@ public class LanguageManager {
         return "**" + username + "** has just earned the achievement: [" + achievementName + "]";
     }
 
-    // --- 新增：伺服器控制台啟動/關閉日誌多語系 ---
     public static String getLogModuleDisabled() {
         if ("zh_tw".equalsIgnoreCase(ConfigHandler.generalConfig.language)) return "[MCToDC] 模組在設定檔中已關閉，跳過核心載入。";
         return "[MCToDC] Module is disabled in config. Skipping core load.";
