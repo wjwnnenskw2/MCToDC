@@ -1,3 +1,26 @@
+================================================================================
+MCToDC Mod - Custom Code License
+================================================================================
+
+[ENGLISH]
+1. Grant of License: Permission is hereby granted to any person obtaining a copy 
+   of this mod's custom source code to freely copy, modify, compile, and use the 
+   source code for personal or server operation purposes.
+2. Disclaimer of Warranty: THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY 
+   OF ANY KIND. IN NO EVENT SHALL THE AUTHORS BE LIABLE FOR ANY CLAIM, DAMAGES 
+   OR OTHER LIABILITY (INCLUDING SERVER CRASHES, DATABASE CORRUPTION, OR DATA 
+   LOSS) ARISING FROM THE USE OF THIS SOFTWARE.
+3. Distribution Restrictions: Direct distribution, re-uploading, or sharing of 
+   the compiled binary products (such as JAR files) to any third-party platforms 
+   is STRICTLY PROHIBITED. If you wish to share this module, you MUST provide 
+   the original link to this GitHub Repository.
+
+[中文]
+1. 授權許可：所有人皆可出於個人或伺服器營運目的，自由複製、修改、編譯及使用本模組之客製化原始碼。
+2. 免責聲明：本軟體依「現況」提供，不附帶任何保證。作者不對因使用本軟體所造成的任何直接或間接損害（包括但不限於伺服器崩潰、資料庫損毀或核心資料遺失）承擔任何形式的法律賠償責任。
+3. 散佈限制：嚴禁將本軟體之編譯成品（如 Jar 檔案）直接散佈、轉載或分享至其他任何第三方平台。若欲分享本模組，必須提供本 GitHub 儲存庫（Repository）之原始官方連結。
+
+
 The build template is licensed under the CC0 public domain dedication license:
 
 Statement of Purpose
