@@ -79,18 +79,16 @@ public class MinecraftListener {
                 }
             }
 
-            // 3. 🔴 核心校驗：如果資料庫說他綁定過，進一步發送 REST 請求檢查他是否還在指定的 Discord 伺服器內！
+            // 3. 核心校驗：校驗退群狀態
             if (isVerified) {
                 boolean isInServer = DiscordListener.isUserInDiscordServer(discordId);
                 if (!isInServer) {
                     isVerified = false;
-                    forceKickDueToLeftServer = true; // 標記為退群踢出
+                    forceKickDueToLeftServer = true; 
                     
-                    // 從本地暫存名單徹底除名，下次他必須在 Discord 重新 !verify
                     RfgExampleMod.boundPlayers.remove(username);
                     RfgExampleMod.saveBinds();
                     
-                    // 可選：若想同時連同遠端 SQL 一併清除解綁，可開啟下方代碼
                     if (ConfigHandler.databaseConfig.useRemoteSQL) {
                         try (Connection conn = DriverManager.getConnection(ConfigHandler.databaseConfig.sqlUrl, ConfigHandler.databaseConfig.sqlUser, ConfigHandler.databaseConfig.sqlPassword)) {
                             String delQuery = "DELETE FROM `" + ConfigHandler.databaseConfig.sqlTableName + "` WHERE `username` = ?;";
@@ -109,7 +107,8 @@ public class MinecraftListener {
             final boolean finalLeftKick = forceKickDueToLeftServer;
 
             if (finalVerified) {
-                String formatPattern = MessageConfigHandler.messages != null && MessageConfigHandler.messages.discordPlayerJoined != null ? MessageConfigHandler.messages.discordPlayerJoined : "";
+                // 修正：精準對齊 MessageConfigHandler 內部的 playerJoined 變數名稱
+                String formatPattern = MessageConfigHandler.messages != null && MessageConfigHandler.messages.playerJoined != null ? MessageConfigHandler.messages.playerJoined : "";
                 if (formatPattern.isEmpty()) formatPattern = LanguageManager.getDiscordPlayerJoined(username, finalDiscordName);
                 String announce = formatPattern.replace("%player%", username).replace("%discord%", finalDiscordName);
                 DiscordListener.sendNativeChannelMessage(ConfigHandler.channelsConfig.chatChannelID, announce, false);
@@ -119,7 +118,6 @@ public class MinecraftListener {
                 
                 try {
                     if (player.playerNetServerHandler != null) {
-                        // 根據是否為「退群原因」顯示不同的斷開提示畫面
                         String kickReason = finalLeftKick ? 
                                 LanguageManager.getMcLeftGuildKickReason() : LanguageManager.getMcKickReason(code);
                         player.playerNetServerHandler.kickPlayerFromServer(kickReason);
@@ -135,7 +133,8 @@ public class MinecraftListener {
         if (RfgExampleMod.pendingVerifications.containsKey(username)) return; 
 
         RfgExampleMod.getExecutor().submit(() -> {
-            String formatPattern = MessageConfigHandler.messages != null && MessageConfigHandler.messages.discordPlayerLeft != null ? MessageConfigHandler.messages.discordPlayerLeft : "";
+            // 修正：精準對齊 playerLeft 變數名稱
+            String formatPattern = MessageConfigHandler.messages != null && MessageConfigHandler.messages.playerLeft != null ? MessageConfigHandler.messages.playerLeft : "";
             if (formatPattern.isEmpty()) formatPattern = LanguageManager.getDiscordPlayerLeft(username);
             String announce = formatPattern.replace("%player%", username);
             DiscordListener.sendNativeChannelMessage(ConfigHandler.channelsConfig.chatChannelID, announce, false);
@@ -152,7 +151,8 @@ public class MinecraftListener {
             if (webhookUrl != null && !webhookUrl.trim().isEmpty() && !webhookUrl.equals("0") && webhookUrl.startsWith("http")) {
                 RfgExampleMod.sendNativeHttpWebhook(webhookUrl, username, message);
             } else {
-                String formatPattern = MessageConfigHandler.messages != null && MessageConfigHandler.messages.discordChat != null ? MessageConfigHandler.messages.discordChat : "";
+                // 修正：精準對齊 chat 變數名稱
+                String formatPattern = MessageConfigHandler.messages != null && MessageConfigHandler.messages.chat != null ? MessageConfigHandler.messages.chat : "";
                 if (formatPattern.isEmpty()) formatPattern = LanguageManager.getDiscordChatFormat(username, message);
                 String format = formatPattern.replace("%player%", username).replace("%message%", message);
                 DiscordListener.sendNativeChannelMessage(ConfigHandler.channelsConfig.chatChannelID, format, false);
@@ -201,7 +201,8 @@ public class MinecraftListener {
             final String finalDeathMessage = localDeathMessage;
 
             RfgExampleMod.getExecutor().submit(() -> {
-                String formatPattern = MessageConfigHandler.messages != null && MessageConfigHandler.messages.discordDeath != null ? MessageConfigHandler.messages.discordDeath : "";
+                // 修正：精準對齊 death 變數名稱
+                String formatPattern = MessageConfigHandler.messages != null && MessageConfigHandler.messages.death != null ? MessageConfigHandler.messages.death : "";
                 if (formatPattern.isEmpty()) formatPattern = LanguageManager.getDiscordDeathFormat(username, finalDeathMessage);
                 String format = formatPattern.replace("%player%", username).replace("%message%", finalDeathMessage);
                 DiscordListener.sendNativeChannelMessage(ConfigHandler.channelsConfig.chatChannelID, format, false);
@@ -223,7 +224,8 @@ public class MinecraftListener {
                 final String achievementName = event.achievement.func_150951_e().getUnformattedText();
 
                 RfgExampleMod.getExecutor().submit(() -> {
-                    String formatPattern = MessageConfigHandler.messages != null && MessageConfigHandler.messages.discordAchievement != null ? MessageConfigHandler.messages.discordAchievement : "";
+                    // 修正：精準對齊 achievement 變數名稱
+                    String formatPattern = MessageConfigHandler.messages != null && MessageConfigHandler.messages.achievement != null ? MessageConfigHandler.messages.achievement : "";
                     if (formatPattern.isEmpty()) formatPattern = LanguageManager.getDiscordAchievementFormat(username, achievementName);
                     String format = formatPattern.replace("%player%", username).replace("%achievement%", achievementName);
                     DiscordListener.sendNativeChannelMessage(ConfigHandler.channelsConfig.chatChannelID, format, false);
