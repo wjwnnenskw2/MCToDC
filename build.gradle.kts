@@ -76,9 +76,9 @@ tasks.withType<Javadoc>().configureEach {
     (options as StandardJavadocDocletOptions).charSet = "UTF-8"
 }
 
-// ==========================================================
+// ==
 // ★ ShadowJar 配置與混淆映射 ★
-// ==========================================================
+// ==
 tasks.jar {
     enabled = true
 }

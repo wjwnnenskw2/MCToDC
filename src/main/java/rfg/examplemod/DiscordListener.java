@@ -1,6 +1,5 @@
 package rfg.examplemod;
 
-<<<<<<< HEAD
 import net.minecraft.server.MinecraftServer;
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
@@ -132,7 +131,7 @@ public class DiscordListener {
 
             com.google.gson.JsonObject json = new com.google.gson.JsonObject();
             json.addProperty("content", content);
-            if (silent) json.addProperty("flags", 4096); // 注入 Discord 靜音回覆標籤
+            if (silent) json.addProperty("flags", 4096);
             
             try (OutputStream os = conn.getOutputStream()) {
                 os.write(json.toString().getBytes(StandardCharsets.UTF_8));
@@ -145,7 +144,6 @@ public class DiscordListener {
     }
 
     private static void deleteDiscordMessage(String channelId, String messageId) {
-        // ... (原來的 deleteDiscordMessage 內容，捕捉異常時加入 debugging 判斷)
         try {
             URL url = new URL("https://discord.com/api/v9/channels/" + channelId + "/messages/" + messageId);
             HttpURLConnection conn = (HttpURLConnection) url.openConnection();
@@ -156,12 +154,4 @@ public class DiscordListener {
             if (ConfigHandler.generalConfig.debugging) e.printStackTrace();
         }
     }
-=======
-/**
- * MCToDC - Native REST API Override Pipeline
- * Obsolete context file kept for structure compatibility. All routines decoupled to main core threads.
- */
-public class DiscordListener {
-    // Completely empty to solve compile symbol references safely
->>>>>>> parent of 7c4c64d (Delete src/main/java/rfg/examplemod directory)
 }

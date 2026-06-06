@@ -14,13 +14,7 @@ import org.apache.logging.log4j.core.Appender;
 import org.apache.logging.log4j.core.LogEvent;
 import org.apache.logging.log4j.core.appender.AbstractAppender;
 
-<<<<<<< HEAD
 import java.io.File;
-=======
-import java.io.BufferedReader;
-import java.io.File;
-import java.io.InputStreamReader;
->>>>>>> parent of 7c4c64d (Delete src/main/java/rfg/examplemod directory)
 import java.io.OutputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
@@ -63,10 +57,6 @@ public class RfgExampleMod {
     public static final java.util.Map<String, String[]> pendingVerifications = new java.util.concurrent.ConcurrentHashMap<>();
     public static com.google.gson.JsonObject boundPlayers = new com.google.gson.JsonObject(); 
     private static File bindFile;
-<<<<<<< HEAD
-=======
-    private static String lastChannelMessageId = "0";
->>>>>>> parent of 7c4c64d (Delete src/main/java/rfg/examplemod directory)
 
     @EventHandler
     public void preInit(FMLPreInitializationEvent event) {
@@ -80,15 +70,11 @@ public class RfgExampleMod {
             logger.error("Config initialization failed: " + e.getMessage());
         }
 
-<<<<<<< HEAD
-        // 🛑 總開關攔截：若設定為 false，直接退出不進行任何核心綁定與加載
         if (!ConfigHandler.generalConfig.enabled) {
             logger.info(LanguageManager.getLogModuleDisabled());
             return;
         }
 
-=======
->>>>>>> parent of 7c4c64d (Delete src/main/java/rfg/examplemod directory)
         bindFile = new File(configDir, "mctodc-bnd.json");
         if (bindFile.exists()) {
             try {
@@ -104,24 +90,18 @@ public class RfgExampleMod {
 
     @EventHandler
     public void serverStarting(FMLServerStartingEvent event) {
-<<<<<<< HEAD
-        // 🛑 總開關二次防護
         if (!ConfigHandler.generalConfig.enabled) return;
 
-=======
->>>>>>> parent of 7c4c64d (Delete src/main/java/rfg/examplemod directory)
         MinecraftListener minecraftListener = new MinecraftListener();
         MinecraftForge.EVENT_BUS.register(minecraftListener);
         FMLCommonHandler.instance().bus().register(minecraftListener);
 
         String activeToken = ConfigHandler.getBotToken();
         if (activeToken.isEmpty() || ConfigHandler.channelsConfig.chatChannelID.equals("0")) {
-<<<<<<< HEAD
             logger.warn("[MCToDC] Bot connection configurations incomplete, proxy service aborted.");
             return;
         }
 
-        // 🔗 動態解碼產生邀請連結
         if (ConfigHandler.botConfig.printInviteLink) {
             try {
                 String clientId = new String(Base64.getDecoder().decode(activeToken.split("\\.")[0]), StandardCharsets.UTF_8);
@@ -131,12 +111,6 @@ public class RfgExampleMod {
             }
         }
 
-=======
-            logger.warn("Bot connection configurations incomplete, proxy service aborted.");
-            return;
-        }
-
->>>>>>> parent of 7c4c64d (Delete src/main/java/rfg/examplemod directory)
         if (ConfigHandler.databaseConfig.useRemoteSQL) {
             executor.submit(() -> setupRemoteSQLTable());
         }
@@ -145,17 +119,7 @@ public class RfgExampleMod {
             @Override
             public void run() {
                 try {
-<<<<<<< HEAD
-                    // 📡 載入多語系初始化日誌
                     logger.info(LanguageManager.getLogGatewayInitializing());
-=======
-                    // TODO: 將閘道初始化日誌納入多語系規範
-                    if ("zh_tw".equalsIgnoreCase(ConfigHandler.generalConfig.language)) {
-                        logger.info("[MCToDC] 正在初始化輕量化原生 HTTP REST 閘道...");
-                    } else {
-                        logger.info("[MCToDC] Initializing light-weight native HTTP REST gateway...");
-                    }
->>>>>>> parent of 7c4c64d (Delete src/main/java/rfg/examplemod directory)
                     
                     System.setProperty("https.protocols", "TLSv1.2,TLSv1.3");
                     System.setProperty("jdk.tls.client.protocols", "TLSv1.2,TLSv1.3");
@@ -164,52 +128,25 @@ public class RfgExampleMod {
                     if (MessageConfigHandler.messages != null && MessageConfigHandler.messages.discordServerStarted != null && !MessageConfigHandler.messages.discordServerStarted.isEmpty()) {
                         activeNotice = MessageConfigHandler.messages.discordServerStarted;
                     }
-<<<<<<< HEAD
                     DiscordListener.sendNativeChannelMessage(ConfigHandler.channelsConfig.chatChannelID, activeNotice, false);
 
-                    // 📡 載入多語系成功日誌
                     logger.info(LanguageManager.getLogGatewaySuccess());
                     
-                    // 將輪詢指向已解耦的 DiscordListener
                     timerExecutor.scheduleAtFixedRate(() -> DiscordListener.pollChannelMessages(), 1, 2500, TimeUnit.MILLISECONDS);
 
-                    // 📡 實作狀態更新 (透過修改頻道主題，最低限制 5 分鐘避免 429 Rate Limit)
                     int interval = Math.max(300, ConfigHandler.botConfig.statusUpdateInterval); 
                     timerExecutor.scheduleAtFixedRate(() -> updateDiscordChannelTopic(), 10, interval, TimeUnit.SECONDS);
 
                 } catch (Exception e) { logger.error("[MCToDC] Gateway link error: " + e.getMessage()); }
-=======
-                    sendNativeChannelMessage(ConfigHandler.channelsConfig.chatChannelID, activeNotice);
-
-                    // TODO: 修正圖中第二行硬編碼日誌，對齊多語系分流
-                    if ("zh_tw".equalsIgnoreCase(ConfigHandler.generalConfig.language)) {
-                        logger.info("[MCToDC] 本地資料庫與安全代理閘道已成功加載完畢。");
-                    } else {
-                        logger.info("[MCToDC] Server has loaded local database and secure proxy channel successfully.");
-                    }
-                    
-                    timerExecutor.scheduleAtFixedRate(() -> pollChannelMessages(), 1, 2500, TimeUnit.MILLISECONDS);
-                } catch (Exception e) { logger.error("Gateway link error: " + e.getMessage()); }
->>>>>>> parent of 7c4c64d (Delete src/main/java/rfg/examplemod directory)
             }
         });
     }
 
     @EventHandler
     public void serverStopping(FMLServerStoppingEvent event) {
-<<<<<<< HEAD
         if (!ConfigHandler.generalConfig.enabled) return;
 
-        // 📡 載入多語系關閉日誌
         logger.info(LanguageManager.getLogServerShuttingDown());
-=======
-        // TODO: 修正圖中第一行關服硬編碼日誌，對齊多語系分流
-        if ("zh_tw".equalsIgnoreCase(ConfigHandler.generalConfig.language)) {
-            logger.info("[MCToDC] 伺服器正在關閉...");
-        } else {
-            logger.info("[MCToDC] Server is shutting down...");
-        }
->>>>>>> parent of 7c4c64d (Delete src/main/java/rfg/examplemod directory)
 
         String stopNotice = "";
         if (MessageConfigHandler.messages != null && MessageConfigHandler.messages.discordServerStopped != null && !MessageConfigHandler.messages.discordServerStopped.isEmpty()) {
@@ -220,11 +157,7 @@ public class RfgExampleMod {
             stopNotice = LanguageManager.getDiscordServerStopped();
         }
         
-<<<<<<< HEAD
         DiscordListener.sendNativeChannelMessage(ConfigHandler.channelsConfig.chatChannelID, stopNotice, false);
-=======
-        sendNativeChannelMessage(ConfigHandler.channelsConfig.chatChannelID, stopNotice);
->>>>>>> parent of 7c4c64d (Delete src/main/java/rfg/examplemod directory)
         
         try { 
             timerExecutor.shutdown(); 
@@ -281,167 +214,6 @@ public class RfgExampleMod {
         saveBinds();
     }
 
-<<<<<<< HEAD
-=======
-    private void pollChannelMessages() {
-        String channelId = ConfigHandler.channelsConfig.chatChannelID;
-        if (channelId == null || channelId.equals("0") || channelId.isEmpty()) return;
-        try {
-            URL url = new URL("https://discord.com/api/v9/channels/" + channelId + "/messages?limit=5");
-            HttpURLConnection conn = (HttpURLConnection) url.openConnection();
-            conn.setRequestMethod("GET");
-            conn.setRequestProperty("Authorization", "Bot " + ConfigHandler.getBotToken());
-            conn.setRequestProperty("User-Agent", "DiscordBot (Minecraft 1.7.10, Native-REST)");
-            conn.setConnectTimeout(1500);
-            conn.setReadTimeout(1500);
-
-            if (conn.getResponseCode() == 200) {
-                BufferedReader reader = new BufferedReader(new InputStreamReader(conn.getInputStream(), StandardCharsets.UTF_8));
-                StringBuilder sb = new StringBuilder();
-                String line;
-                while ((line = reader.readLine()) != null) sb.append(line);
-                reader.close();
-
-                com.google.gson.JsonArray messages = new com.google.gson.JsonParser().parse(sb.toString()).getAsJsonArray();
-                if (messages.size() > 0) {
-                    if (lastChannelMessageId.equals("0")) {
-                        lastChannelMessageId = messages.get(0).getAsJsonObject().get("id").getAsString();
-                        return;
-                    }
-
-                    for (int i = messages.size() - 1; i >= 0; i--) {
-                        com.google.gson.JsonObject msgObj = messages.get(i).getAsJsonObject();
-                        String id = msgObj.get("id").getAsString();
-                        
-                        if (id.compareTo(lastChannelMessageId) > 0) {
-                            lastChannelMessageId = id;
-                            processIncomingMessage(msgObj);
-                        }
-                    }
-                }
-            }
-        } catch (Exception e) {}
-    }
-
-    private void processIncomingMessage(com.google.gson.JsonObject msgObj) {
-        com.google.gson.JsonObject author = msgObj.getAsJsonObject("author");
-        if (author.has("bot") && author.get("bot").getAsBoolean()) return;
-
-        String content = msgObj.get("content").getAsString().trim();
-        String authorName = author.get("username").getAsString();
-        String authorId = author.get("id").getAsString();
-        String messageId = msgObj.get("id").getAsString();
-        String channelId = msgObj.get("channel_id").getAsString();
-
-        if (content.startsWith("!verify")) {
-            executor.submit(() -> deleteDiscordMessage(channelId, messageId));
-
-            String[] parts = content.split("\\s+");
-            if (parts.length < 2) {
-                String err = "";
-                if (MessageConfigHandler.messages != null && MessageConfigHandler.messages.discordVerifyFormatError != null && !MessageConfigHandler.messages.discordVerifyFormatError.isEmpty()) {
-                    err = MessageConfigHandler.messages.discordVerifyFormatError;
-                }
-                if (err.isEmpty()) {
-                    err = LanguageManager.getDiscordVerifyFormatError();
-                }
-                sendNativeChannelMessage(channelId, err);
-                return;
-            }
-
-            String inputCode = parts[1];
-            String mcName = null;
-            String mcUuid = "";
-
-            for (java.util.Map.Entry<String, String[]> entry : pendingVerifications.entrySet()) {
-                if (entry.getValue()[0].equals(inputCode)) {
-                    mcName = entry.getKey();
-                    mcUuid = entry.getValue()[1];
-                    break;
-                }
-            }
-
-            if (mcName == null) {
-                String err = "";
-                if (MessageConfigHandler.messages != null && MessageConfigHandler.messages.discordVerifyInvalidError != null && !MessageConfigHandler.messages.discordVerifyInvalidError.isEmpty()) {
-                    err = MessageConfigHandler.messages.discordVerifyInvalidError;
-                }
-                if (err.isEmpty()) {
-                    err = LanguageManager.getDiscordVerifyInvalidError();
-                }
-                sendNativeChannelMessage(channelId, err);
-                return;
-            }
-
-            savePlayerBindingData(mcName, mcUuid, authorId, authorName);
-            pendingVerifications.remove(mcName);
-
-            String succ = "";
-            if (MessageConfigHandler.messages != null && MessageConfigHandler.messages.discordVerifySuccess != null && !MessageConfigHandler.messages.discordVerifySuccess.isEmpty()) {
-                succ = MessageConfigHandler.messages.discordVerifySuccess;
-            }
-            if (succ.isEmpty()) {
-                succ = LanguageManager.getDiscordVerifySuccess(mcName);
-            }
-            String response = succ.replace("%user%", mcName);
-            sendNativeChannelMessage(channelId, response);
-            return;
-        }
-
-        String formatPattern = "%player%: %message%";
-        try {
-            java.lang.reflect.Field f = MessageConfigHandler.messages.getClass().getDeclaredField("discordToMinecraftChat");
-            String custom = (String) f.get(MessageConfigHandler.messages);
-            if (custom != null && !custom.isEmpty()) formatPattern = custom;
-        } catch (Exception e) {}
-
-        String formatted = formatPattern.replace("%user%", authorName).replace("%message%", content);
-        try {
-            MinecraftServer.getServer().getConfigurationManager().sendChatMsg(new net.minecraft.util.ChatComponentText(formatted));
-        } catch (Exception e) {}
-    }
-
-    public static void sendNativeChannelMessage(String channelId, String content) {
-        String token = ConfigHandler.getBotToken();
-        if (channelId == null || channelId.equals("0") || channelId.isEmpty() || token.isEmpty()) return;
-        try {
-            URL url = new URL("https://discord.com/api/v9/channels/" + channelId + "/messages");
-            HttpURLConnection conn = (HttpURLConnection) url.openConnection();
-            conn.setRequestMethod("POST");
-            conn.setDoOutput(true);
-            conn.setConnectTimeout(2000);
-            conn.setReadTimeout(2000);
-            conn.setRequestProperty("Authorization", "Bot " + token);
-            conn.setRequestProperty("Content-Type", "application/json; charset=utf-8");
-            conn.setRequestProperty("User-Agent", "DiscordBot (Minecraft 1.7.10, Native-REST)");
-
-            com.google.gson.JsonObject json = new com.google.gson.JsonObject();
-            json.addProperty("content", content);
-            
-            try (OutputStream os = conn.getOutputStream()) {
-                os.write(json.toString().getBytes(StandardCharsets.UTF_8));
-                os.flush();
-            }
-            conn.getResponseCode();
-        } catch (Exception e) {}
-    }
-
-    private static void deleteDiscordMessage(String channelId, String messageId) {
-        String token = ConfigHandler.getBotToken();
-        if (token.isEmpty()) return;
-        try {
-            URL url = new URL("https://discord.com/api/v9/channels/" + channelId + "/messages/" + messageId);
-            HttpURLConnection conn = (HttpURLConnection) url.openConnection();
-            conn.setRequestMethod("DELETE");
-            conn.setConnectTimeout(2000);
-            conn.setReadTimeout(2000);
-            conn.setRequestProperty("Authorization", "Bot " + token);
-            conn.setRequestProperty("User-Agent", "DiscordBot (Minecraft 1.7.10, Native-REST)");
-            conn.getResponseCode();
-        } catch (Exception e) {}
-    }
-
->>>>>>> parent of 7c4c64d (Delete src/main/java/rfg/examplemod directory)
     private void setupConsoleAppender() {
         org.apache.logging.log4j.core.Logger rootLogger = (org.apache.logging.log4j.core.Logger) org.apache.logging.log4j.LogManager.getRootLogger();
         Appender consoleAppender = new AbstractAppender("MCToDC-ConsoleInterceptor", null, null) {
@@ -457,11 +229,7 @@ public class RfgExampleMod {
                     } else {
                         String cid = ConfigHandler.channelsConfig.consoleChannelID;
                         if (cid != null && !cid.equals("0") && !cid.isEmpty()) {
-<<<<<<< HEAD
                             DiscordListener.sendNativeChannelMessage(cid, "`" + logMessage + "`", false);
-=======
-                            sendNativeChannelMessage(cid, "`" + logMessage + "`");
->>>>>>> parent of 7c4c64d (Delete src/main/java/rfg/examplemod directory)
                         }
                     }
                 });
@@ -493,8 +261,6 @@ public class RfgExampleMod {
         } catch (Exception e) {} finally { if (conn != null) conn.disconnect(); }
     }
 
-<<<<<<< HEAD
-    // 狀態動態更新實作
     private static void updateDiscordChannelTopic() {
         String channelId = ConfigHandler.channelsConfig.chatChannelID;
         if (channelId == null || channelId.equals("0")) return;
@@ -523,8 +289,6 @@ public class RfgExampleMod {
         }
     }
 
-=======
->>>>>>> parent of 7c4c64d (Delete src/main/java/rfg/examplemod directory)
     public static synchronized void saveBinds() {
         if (bindFile == null) return;
         try { java.nio.file.Files.write(bindFile.toPath(), boundPlayers.toString().getBytes(StandardCharsets.UTF_8)); } catch (Exception e) {}
