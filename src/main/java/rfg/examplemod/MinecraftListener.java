@@ -107,7 +107,6 @@ public class MinecraftListener {
             final boolean finalLeftKick = forceKickDueToLeftServer;
 
             if (finalVerified) {
-                // 修正：精準對齊 MessageConfigHandler 內部的 playerJoined 變數名稱
                 String formatPattern = MessageConfigHandler.messages != null && MessageConfigHandler.messages.playerJoined != null ? MessageConfigHandler.messages.playerJoined : "";
                 if (formatPattern.isEmpty()) formatPattern = LanguageManager.getDiscordPlayerJoined(username, finalDiscordName);
                 String announce = formatPattern.replace("%player%", username).replace("%discord%", finalDiscordName);
@@ -133,7 +132,6 @@ public class MinecraftListener {
         if (RfgExampleMod.pendingVerifications.containsKey(username)) return; 
 
         RfgExampleMod.getExecutor().submit(() -> {
-            // 修正：精準對齊 playerLeft 變數名稱
             String formatPattern = MessageConfigHandler.messages != null && MessageConfigHandler.messages.playerLeft != null ? MessageConfigHandler.messages.playerLeft : "";
             if (formatPattern.isEmpty()) formatPattern = LanguageManager.getDiscordPlayerLeft(username);
             String announce = formatPattern.replace("%player%", username);
@@ -151,7 +149,6 @@ public class MinecraftListener {
             if (webhookUrl != null && !webhookUrl.trim().isEmpty() && !webhookUrl.equals("0") && webhookUrl.startsWith("http")) {
                 RfgExampleMod.sendNativeHttpWebhook(webhookUrl, username, message);
             } else {
-                // 修正：精準對齊 chat 變數名稱
                 String formatPattern = MessageConfigHandler.messages != null && MessageConfigHandler.messages.chat != null ? MessageConfigHandler.messages.chat : "";
                 if (formatPattern.isEmpty()) formatPattern = LanguageManager.getDiscordChatFormat(username, message);
                 String format = formatPattern.replace("%player%", username).replace("%message%", message);
@@ -201,7 +198,6 @@ public class MinecraftListener {
             final String finalDeathMessage = localDeathMessage;
 
             RfgExampleMod.getExecutor().submit(() -> {
-                // 修正：精準對齊 death 變數名稱
                 String formatPattern = MessageConfigHandler.messages != null && MessageConfigHandler.messages.death != null ? MessageConfigHandler.messages.death : "";
                 if (formatPattern.isEmpty()) formatPattern = LanguageManager.getDiscordDeathFormat(username, finalDeathMessage);
                 String format = formatPattern.replace("%player%", username).replace("%message%", finalDeathMessage);
@@ -224,7 +220,6 @@ public class MinecraftListener {
                 final String achievementName = event.achievement.func_150951_e().getUnformattedText();
 
                 RfgExampleMod.getExecutor().submit(() -> {
-                    // 修正：精準對齊 achievement 變數名稱
                     String formatPattern = MessageConfigHandler.messages != null && MessageConfigHandler.messages.achievement != null ? MessageConfigHandler.messages.achievement : "";
                     if (formatPattern.isEmpty()) formatPattern = LanguageManager.getDiscordAchievementFormat(username, achievementName);
                     String format = formatPattern.replace("%player%", username).replace("%achievement%", achievementName);
