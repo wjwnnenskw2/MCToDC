@@ -70,11 +70,7 @@ public class ConfigHandler {
             try {
                 writeDefaultConfig();
             } catch (IOException e) {
-<<<<<<< HEAD
-                logger.error("[MCToDC] Failed to generate configuration file: " + e.getMessage());
-=======
                 e.printStackTrace();
->>>>>>> parent of 7c4c64d (Delete src/main/java/rfg/examplemod directory)
             }
         }
         loadConfig();
@@ -82,50 +78,13 @@ public class ConfigHandler {
 
     private static void writeDefaultConfig() throws IOException {
         try (BufferedWriter writer = new BufferedWriter(new OutputStreamWriter(new FileOutputStream(configFile), StandardCharsets.UTF_8))) {
-<<<<<<< HEAD
-            writer.write("# MCToDC Infrastructure Configuration Profile\n\n");
-            
-            writer.write("[general]\n");
-            writer.write("enabled = true\n");
-            writer.write("debugging = false\n");
-            writer.write("language = \"en_us\" # Supported: en_us, zh_tw\n");
-            writer.write("configVersion = 30\n\n");
-            
-            writer.write("[botConfig]\n");
-            writer.write("botToken = \"\"\n");
-            writer.write("printInviteLink = true\n");
-            writer.write("silentReplies = true\n");
-            writer.write("statusUpdateInterval = 30\n\n");
-            
-            writer.write("[channelsAndWebhooks]\n");
-            writer.write("[channelsAndWebhooks.channels]\n");
-            writer.write("chatChannelID = \"0\"\n");
-            writer.write("consoleChannelID = \"0\"\n\n");
-            writer.write("[channelsAndWebhooks.webhooks]\n");
-            writer.write("chatWebhook = \"\"\n");
-            writer.write("consoleWebhook = \"\"\n\n");
-            
-            writer.write("[chat]\n");
-            writer.write("sendConsoleMessages = false\n");
-            writer.write("sendCommandMessages = false\n\n");
-            
-            writer.write("[database]\n");
-            writer.write("useRemoteSQL = false\n");
-            writer.write("sqlUrl = \"jdbc:mysql://localhost:3306/minecraft_db?useSSL=false&serverTimezone=UTC\"\n");
-            writer.write("sqlUser = \"root\"\n");
-            writer.write("sqlPassword = \"\"\n");
-            writer.write("sqlTableName = \"mctodc_whitelist\"\n");
-=======
             writer.write("# MCToDC - Infrastructure Config\n\n");
-            
-            // 🎯【TODO: 補上可選語系註釋】：讓服主一目了然有哪些參數可填
             writer.write("[general]\nenabled = true\ndebugging = false\nlanguage = \"en_us\" # Available: en_us, zh_tw\nconfigVersion = 30\n\n");
             writer.write("[botConfig]\nbotToken = \"\"\nprintInviteLink = true\nsilentReplies = true\nstatusUpdateInterval = 30\n\n");
             writer.write("[channelsAndWebhooks]\n[channelsAndWebhooks.channels]\nchatChannelID = \"0\"\nconsoleChannelID = \"0\"\n\n");
             writer.write("[channelsAndWebhooks.webhooks]\nchatWebhook = \"\"\nconsoleWebhook = \"\"\n\n");
             writer.write("[chat]\nsendConsoleMessages = false\nsendCommandMessages = false\n\n");
             writer.write("[database]\nuseRemoteSQL = false\nsqlUrl = \"jdbc:mysql://localhost:3306/minecraft_db?useSSL=false&serverTimezone=UTC\"\nsqlUser = \"root\"\nsqlPassword = \"\"\nsqlTableName = \"mctodc_whitelist\"\n");
->>>>>>> parent of 7c4c64d (Delete src/main/java/rfg/examplemod directory)
         }
     }
 
@@ -145,23 +104,10 @@ public class ConfigHandler {
             String rawToken = config.getString("botConfig.botToken", "");
             if ("ENCRYPTED_AND_LOADED".equals(rawToken)) {
                 if (secretFile.exists()) {
-<<<<<<< HEAD
-                    try {
-                        String encryptedData = new String(Files.readAllBytes(secretFile.toPath()), StandardCharsets.UTF_8).trim();
-                        actualBotToken = decrypt(encryptedData, hwKey);
-                    } catch (Exception e) {
-                        actualBotToken = "";
-                        logger.error("[MCToDC] Configuration decryption failed. Hardware environment signature mismatch.");
-                        logger.error("[MCToDC] Resolution: Delete '.mctodc-secret' and update the token value in the configuration file.");
-                    }
-                } else {
-                    logger.error("[MCToDC] Security storage file missing. Please update token configuration.");
-=======
                     String encryptedData = new String(Files.readAllBytes(secretFile.toPath()), StandardCharsets.UTF_8).trim();
                     actualBotToken = decrypt(encryptedData, hwKey);
                 } else {
                     logger.error("[MCToDC] Secure container asset (.mctodc-secret) missed. Reset your plain token in toml.");
->>>>>>> parent of 7c4c64d (Delete src/main/java/rfg/examplemod directory)
                 }
             } else if (rawToken != null && !rawToken.isEmpty()) {
                 actualBotToken = rawToken;
@@ -172,12 +118,8 @@ public class ConfigHandler {
                     String tomlContent = new String(Files.readAllBytes(configFile.toPath()), StandardCharsets.UTF_8);
                     String obfuscatedContent = tomlContent.replace("botToken = \"" + rawToken + "\"", "botToken = \"ENCRYPTED_AND_LOADED\"");
                     Files.write(configFile.toPath(), obfuscatedContent.getBytes(StandardCharsets.UTF_8));
-<<<<<<< HEAD
-                } catch (Exception ignored) {}
-=======
                     logger.info("[MCToDC] Plain token encrypted with hardware baseline successfully.");
                 } catch (Exception e) {}
->>>>>>> parent of 7c4c64d (Delete src/main/java/rfg/examplemod directory)
             }
 
             botConfig.printInviteLink = config.getBoolean("botConfig.printInviteLink", true);
@@ -203,24 +145,11 @@ public class ConfigHandler {
 
             if ("ENCRYPTED_AND_LOADED".equals(rawSqlPassword)) {
                 if (dbSecretFile.exists()) {
-<<<<<<< HEAD
-                    try {
-                        String encryptedPw = new String(Files.readAllBytes(dbSecretFile.toPath()), StandardCharsets.UTF_8).trim();
-                        databaseConfig.sqlPassword = decrypt(encryptedPw, hwKey);
-                    } catch (Exception e) {
-                        databaseConfig.sqlPassword = "";
-                        logger.error("[MCToDC] Database credential decryption failed. Mismatched environment profile.");
-                    }
-                } else {
-                    databaseConfig.sqlPassword = "";
-                    logger.error("[MCToDC] Database secure storage file missing. Fallback initiated.");
-=======
                     String encryptedPw = new String(Files.readAllBytes(dbSecretFile.toPath()), StandardCharsets.UTF_8).trim();
                     databaseConfig.sqlPassword = decrypt(encryptedPw, hwKey);
                 } else {
                     databaseConfig.sqlPassword = "";
                     logger.error("[MCToDC] Secure database asset (.mctodc-db-secret) missed. Reset your plain password in toml.");
->>>>>>> parent of 7c4c64d (Delete src/main/java/rfg/examplemod directory)
                 }
             } else if (rawSqlPassword != null && !rawSqlPassword.isEmpty()) {
                 databaseConfig.sqlPassword = rawSqlPassword;
@@ -229,30 +158,19 @@ public class ConfigHandler {
 
                 try {
                     String tomlContent = new String(Files.readAllBytes(configFile.toPath()), StandardCharsets.UTF_8);
-<<<<<<< HEAD
-                    String obfuscatedContent = tomlContent.replace("sqlPassword = \"" + rawSqlPassword + "\"", "sqlPassword = \"ENCRYPTED_AND_LOADED\"");
-                    Files.write(configFile.toPath(), obfuscatedContent.getBytes(StandardCharsets.UTF_8));
-                } catch (Exception e) {
-                    logger.error("[MCToDC] Encrypted credential writing failed: " + e.getMessage());
-=======
                     String obfuscatedContent = tomlContent.replace("sqlPassword = \"\"\"", "sqlPassword = \"ENCRYPTED_AND_LOADED\"")
                                                           .replace("sqlPassword = \"" + rawSqlPassword + "\"", "sqlPassword = \"ENCRYPTED_AND_LOADED\"");
                     Files.write(configFile.toPath(), obfuscatedContent.getBytes(StandardCharsets.UTF_8));
                     logger.info("[MCToDC] Plaintext SQL password has been securely obfuscated on disk.");
                 } catch (Exception e) {
                     logger.error("[MCToDC] Failed to overwrite plaintext SQL password: " + e.getMessage());
->>>>>>> parent of 7c4c64d (Delete src/main/java/rfg/examplemod directory)
                 }
             } else {
                 databaseConfig.sqlPassword = "";
             }
 
         } catch (Exception e) {
-<<<<<<< HEAD
-            logger.error("[MCToDC] Configuration parsing exception: " + e.getMessage());
-=======
             logger.error("[MCToDC] Config parsing failure: " + e.getMessage());
->>>>>>> parent of 7c4c64d (Delete src/main/java/rfg/examplemod directory)
         }
     }
 
