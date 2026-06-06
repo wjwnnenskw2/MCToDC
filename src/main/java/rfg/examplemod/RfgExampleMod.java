@@ -80,7 +80,7 @@ public class RfgExampleMod {
             try {
                 String content = new String(java.nio.file.Files.readAllBytes(bindFile.toPath()), StandardCharsets.UTF_8);
                 boundPlayers = new com.google.gson.JsonParser().parse(content).getAsJsonObject();
-            } catch (Exception e) { logger.error("Failed to parse local binding database json"); }
+            } catch (Exception e) {}
         }
 
         if (ConfigHandler.chatConfig.sendConsoleMessages) {
@@ -106,9 +106,7 @@ public class RfgExampleMod {
             try {
                 String clientId = new String(Base64.getDecoder().decode(activeToken.split("\\.")[0]), StandardCharsets.UTF_8);
                 logger.info("[MCToDC] 🤖 Bot Invite Link: https://discord.com/oauth2/authorize?client_id=" + clientId + "&permissions=536870912&scope=bot");
-            } catch (Exception e) {
-                logger.warn("[MCToDC] Could not parse Client ID from token for invite link.");
-            }
+            } catch (Exception e) {}
         }
 
         if (ConfigHandler.databaseConfig.useRemoteSQL) {
@@ -120,24 +118,21 @@ public class RfgExampleMod {
             public void run() {
                 try {
                     logger.info(LanguageManager.getLogGatewayInitializing());
-                    
                     System.setProperty("https.protocols", "TLSv1.2,TLSv1.3");
-                    System.setProperty("jdk.tls.client.protocols", "TLSv1.2,TLSv1.3");
-
-                    String activeNotice = LanguageManager.getDiscordServerStarted();
-                    if (MessageConfigHandler.messages != null && MessageConfigHandler.messages.discordServerStarted != null && !MessageConfigHandler.messages.discordServerStarted.isEmpty()) {
-                        activeNotice = MessageConfigHandler.messages.discordServerStarted;
-                    }
+                    
+                    String activeNotice = MessageConfigHandler.messages != null && MessageConfigHandler.messages.discordServerStarted != null ? MessageConfigHandler.messages.discordServerStarted : "";
+                    if (activeNotice.isEmpty()) activeNotice = LanguageManager.getDiscordServerStarted();
                     DiscordListener.sendNativeChannelMessage(ConfigHandler.channelsConfig.chatChannelID, activeNotice, false);
 
                     logger.info(LanguageManager.getLogGatewaySuccess());
                     
+                    // 完美指向 DiscordListener 的輪詢
                     timerExecutor.scheduleAtFixedRate(() -> DiscordListener.pollChannelMessages(), 1, 2500, TimeUnit.MILLISECONDS);
 
                     int interval = Math.max(300, ConfigHandler.botConfig.statusUpdateInterval); 
                     timerExecutor.scheduleAtFixedRate(() -> updateDiscordChannelTopic(), 10, interval, TimeUnit.SECONDS);
 
-                } catch (Exception e) { logger.error("[MCToDC] Gateway link error: " + e.getMessage()); }
+                } catch (Exception e) {}
             }
         });
     }
@@ -145,24 +140,14 @@ public class RfgExampleMod {
     @EventHandler
     public void serverStopping(FMLServerStoppingEvent event) {
         if (!ConfigHandler.generalConfig.enabled) return;
-
         logger.info(LanguageManager.getLogServerShuttingDown());
 
-        String stopNotice = "";
-        if (MessageConfigHandler.messages != null && MessageConfigHandler.messages.discordServerStopped != null && !MessageConfigHandler.messages.discordServerStopped.isEmpty()) {
-            stopNotice = MessageConfigHandler.messages.discordServerStopped;
-        }
-
-        if (stopNotice.isEmpty()) {
-            stopNotice = LanguageManager.getDiscordServerStopped();
-        }
+        String stopNotice = MessageConfigHandler.messages != null && MessageConfigHandler.messages.discordServerStopped != null ? MessageConfigHandler.messages.discordServerStopped : "";
+        if (stopNotice.isEmpty()) stopNotice = LanguageManager.getDiscordServerStopped();
         
         DiscordListener.sendNativeChannelMessage(ConfigHandler.channelsConfig.chatChannelID, stopNotice, false);
         
-        try { 
-            timerExecutor.shutdown(); 
-            executor.shutdown(); 
-        } catch (Exception e) {}
+        try { timerExecutor.shutdown(); executor.shutdown(); } catch (Exception e) {}
     }
 
     private static void setupRemoteSQLTable() {
@@ -170,19 +155,14 @@ public class RfgExampleMod {
             Class.forName("com.mysql.jdbc.Driver");
             try (Connection conn = DriverManager.getConnection(ConfigHandler.databaseConfig.sqlUrl, ConfigHandler.databaseConfig.sqlUser, ConfigHandler.databaseConfig.sqlPassword)) {
                 String query = "CREATE TABLE IF NOT EXISTS `" + ConfigHandler.databaseConfig.sqlTableName + "` (" +
-                        "`username` VARCHAR(64) NOT NULL, " +
-                        "`uuid` VARCHAR(64) NOT NULL, " +
-                        "`discord_id` VARCHAR(64) NOT NULL, " +
-                        "`discord_name` VARCHAR(64) NOT NULL, " +
+                        "`username` VARCHAR(64) NOT NULL, `uuid` VARCHAR(64) NOT NULL, `discord_id` VARCHAR(64) NOT NULL, `discord_name` VARCHAR(64) NOT NULL, " +
                         "PRIMARY KEY (`username`), KEY `uuid_idx` (`uuid`)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;";
                 try (PreparedStatement stmt = conn.prepareStatement(query)) {
                     stmt.executeUpdate();
                     logger.info("[MCToDC] Relational SQL table structure synchronized successfully.");
                 }
             }
-        } catch (Exception e) {
-            logger.error("[MCToDC] SQL integration initialization error (Will fallback to JSON): " + e.getMessage());
-        }
+        } catch (Exception e) {}
     }
 
     public static void savePlayerBindingData(String username, String uuid, String discordId, String discordName) {
@@ -193,16 +173,11 @@ public class RfgExampleMod {
                     try (Connection conn = DriverManager.getConnection(ConfigHandler.databaseConfig.sqlUrl, ConfigHandler.databaseConfig.sqlUser, ConfigHandler.databaseConfig.sqlPassword)) {
                         String query = "REPLACE INTO `" + ConfigHandler.databaseConfig.sqlTableName + "` (`username`, `uuid`, `discord_id`, `discord_name`) VALUES (?, ?, ?, ?);";
                         try (PreparedStatement stmt = conn.prepareStatement(query)) {
-                            stmt.setString(1, username);
-                            stmt.setString(2, uuid);
-                            stmt.setString(3, discordId);
-                            stmt.setString(4, discordName);
+                            stmt.setString(1, username); stmt.setString(2, uuid); stmt.setString(3, discordId); stmt.setString(4, discordName);
                             stmt.executeUpdate();
                         }
                     }
-                } catch (Exception e) {
-                    logger.error("[MCToDC] Failed to execute remote SQL data insertion: " + e.getMessage());
-                }
+                } catch (Exception e) {}
             });
         }
         
@@ -245,16 +220,14 @@ public class RfgExampleMod {
         try {
             if (content.length() > 1800) content = content.substring(0, 1800) + "... (Truncated)";
             com.google.gson.JsonObject json = new com.google.gson.JsonObject();
-            json.addProperty("username", username);
-            json.addProperty("content", content);
+            json.addProperty("username", username); json.addProperty("content", content);
             byte[] payload = json.toString().getBytes(StandardCharsets.UTF_8);
 
             URL url = new URL(webhookUrl);
             conn = (HttpURLConnection) url.openConnection();
             conn.setRequestMethod("POST");
             conn.setDoOutput(true);
-            conn.setConnectTimeout(2000);
-            conn.setReadTimeout(2000);
+            conn.setConnectTimeout(2000); conn.setReadTimeout(2000);
             conn.setRequestProperty("Content-Type", "application/json; charset=utf-8");
             try (OutputStream os = conn.getOutputStream()) { os.write(payload); os.flush(); }
             conn.getResponseCode();
@@ -279,14 +252,9 @@ public class RfgExampleMod {
             com.google.gson.JsonObject json = new com.google.gson.JsonObject();
             json.addProperty("topic", topic);
 
-            try (OutputStream os = conn.getOutputStream()) {
-                os.write(json.toString().getBytes(StandardCharsets.UTF_8));
-                os.flush();
-            }
+            try (OutputStream os = conn.getOutputStream()) { os.write(json.toString().getBytes(StandardCharsets.UTF_8)); os.flush(); }
             conn.getResponseCode();
-        } catch (Exception e) {
-            if (ConfigHandler.generalConfig.debugging) e.printStackTrace();
-        }
+        } catch (Exception e) {}
     }
 
     public static synchronized void saveBinds() {

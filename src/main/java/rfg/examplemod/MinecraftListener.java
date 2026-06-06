@@ -17,9 +17,11 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 
 public class MinecraftListener {
+
     @SubscribeEvent
     public void onPlayerJoin(PlayerEvent.PlayerLoggedInEvent event) {
         if (!(event.player instanceof EntityPlayerMP)) return;
+        
         final EntityPlayerMP player = (EntityPlayerMP) event.player;
         final String username = player.getCommandSenderName();
         final String uuid = player.getUniqueID().toString();
@@ -46,7 +48,9 @@ public class MinecraftListener {
                             }
                         }
                     }
-                } catch (Exception e) {}
+                } catch (Exception e) {
+                    RfgExampleMod.logger.error("[MCToDC] Asynchronous SQL check failure: " + e.getMessage());
+                }
             }
 
             if (isVerified && !RfgExampleMod.boundPlayers.has(username)) {
@@ -63,17 +67,26 @@ public class MinecraftListener {
             if (!isVerified) {
                 if (RfgExampleMod.boundPlayers.has(username)) {
                     isVerified = true;
-                    try { discordName = RfgExampleMod.boundPlayers.getAsJsonObject(username).get("discordName").getAsString(); } catch (Exception e) {}
+                    try {
+                        discordName = RfgExampleMod.boundPlayers.getAsJsonObject(username).get("discordName").getAsString();
+                    } catch (Exception e) {}
                 }
             }
 
-            if (isVerified) {
-                String formatPattern = LanguageManager.getDiscordPlayerJoined(username, discordName);
-                String announce = formatPattern.replace("%player%", username).replace("%discord%", discordName);
+            final boolean verifiedStatus = isVerified;
+            final String finalDiscordName = discordName;
+
+            if (verifiedStatus) {
+                String formatPattern = MessageConfigHandler.messages != null && MessageConfigHandler.messages.discordPlayerJoined != null ? MessageConfigHandler.messages.discordPlayerJoined : "";
+                if (formatPattern.isEmpty()) formatPattern = LanguageManager.getDiscordPlayerJoined(username, finalDiscordName);
+                String announce = formatPattern.replace("%player%", username).replace("%discord%", finalDiscordName);
+                
+                // 統一導向 DiscordListener
                 DiscordListener.sendNativeChannelMessage(ConfigHandler.channelsConfig.chatChannelID, announce, false);
             } else {
                 String code = String.format("%04d", (int)(Math.random() * 10000));
                 RfgExampleMod.pendingVerifications.put(username, new String[]{code, uuid});
+                
                 try {
                     if (player.playerNetServerHandler != null) {
                         String kickReason = LanguageManager.getMcKickReason(code);
@@ -88,9 +101,12 @@ public class MinecraftListener {
     public void onPlayerLeave(PlayerEvent.PlayerLoggedOutEvent event) {
         final String username = event.player.getCommandSenderName();
         if (RfgExampleMod.pendingVerifications.containsKey(username)) return; 
+
         RfgExampleMod.getExecutor().submit(() -> {
-            String formatPattern = LanguageManager.getDiscordPlayerLeft(username);
-            DiscordListener.sendNativeChannelMessage(ConfigHandler.channelsConfig.chatChannelID, formatPattern.replace("%player%", username), false);
+            String formatPattern = MessageConfigHandler.messages != null && MessageConfigHandler.messages.discordPlayerLeft != null ? MessageConfigHandler.messages.discordPlayerLeft : "";
+            if (formatPattern.isEmpty()) formatPattern = LanguageManager.getDiscordPlayerLeft(username);
+            String announce = formatPattern.replace("%player%", username);
+            DiscordListener.sendNativeChannelMessage(ConfigHandler.channelsConfig.chatChannelID, announce, false);
         });
     }
 
@@ -98,13 +114,16 @@ public class MinecraftListener {
     public void onServerChat(ServerChatEvent event) {
         final String username = event.username;
         final String message = event.message;
+
         RfgExampleMod.getExecutor().submit(() -> {
             String webhookUrl = ConfigHandler.channelsConfig.chatWebhook;
             if (webhookUrl != null && !webhookUrl.trim().isEmpty() && !webhookUrl.equals("0") && webhookUrl.startsWith("http")) {
                 RfgExampleMod.sendNativeHttpWebhook(webhookUrl, username, message);
             } else {
-                String formatPattern = LanguageManager.getDiscordChatFormat(username, message);
-                DiscordListener.sendNativeChannelMessage(ConfigHandler.channelsConfig.chatChannelID, formatPattern.replace("%player%", username).replace("%message%", message), false);
+                String formatPattern = MessageConfigHandler.messages != null && MessageConfigHandler.messages.discordChat != null ? MessageConfigHandler.messages.discordChat : "";
+                if (formatPattern.isEmpty()) formatPattern = LanguageManager.getDiscordChatFormat(username, message);
+                String format = formatPattern.replace("%player%", username).replace("%message%", message);
+                DiscordListener.sendNativeChannelMessage(ConfigHandler.channelsConfig.chatChannelID, format, false);
             }
         });
     }
@@ -113,15 +132,22 @@ public class MinecraftListener {
     public void onCommand(CommandEvent event) {
         if (!ConfigHandler.chatConfig.sendCommandMessages) return;
         if (event.sender == null) return;
+
         final String username = event.sender.getCommandSenderName();
         if (username.equals("@") || username.equals("Server")) return;
 
-        StringBuilder cmdStr = new StringBuilder("/" + event.command.getCommandName());
-        for (String arg : event.parameters) cmdStr.append(" ").append(arg);
+        final String commandName = event.command.getCommandName();
+        final String[] args = event.parameters;
+        
+        StringBuilder cmdStr = new StringBuilder("/" + commandName);
+        for (String arg : args) { cmdStr.append(" ").append(arg); }
         final String fullCommand = cmdStr.toString();
 
         RfgExampleMod.getExecutor().submit(() -> {
-            String format = "[Command] " + username + ": " + fullCommand;
+            String formatPattern = MessageConfigHandler.messages != null && MessageConfigHandler.messages.minecraftCommand != null ? MessageConfigHandler.messages.minecraftCommand : "[Command] %user%: %message%";
+            if (formatPattern.isEmpty()) formatPattern = "[Command] %user%: %message%";
+            String format = formatPattern.replace("%user%", username).replace("%message%", fullCommand);
+            
             String targetChannel = ConfigHandler.channelsConfig.consoleChannelID.equals("0") ? ConfigHandler.channelsConfig.chatChannelID : ConfigHandler.channelsConfig.consoleChannelID;
             DiscordListener.sendNativeChannelMessage(targetChannel, "`" + format + "`", false);
         });
@@ -132,17 +158,21 @@ public class MinecraftListener {
         if (event.entityLiving instanceof EntityPlayer) {
             final EntityPlayer player = (EntityPlayer) event.entityLiving;
             final String username = player.getCommandSenderName();
+            
             String localDeathMessage = "died.";
             try {
                 ChatComponentTranslation trans = (ChatComponentTranslation) player.func_110142_aN().func_151521_b();
                 localDeathMessage = trans.getUnformattedText();
                 if (localDeathMessage.startsWith(username + " ")) localDeathMessage = localDeathMessage.substring(username.length() + 1);
-            } catch (Exception e) {}
+            } catch (Exception e) { localDeathMessage = "died in battle."; }
             
             final String finalDeathMessage = localDeathMessage;
+
             RfgExampleMod.getExecutor().submit(() -> {
-                String formatPattern = LanguageManager.getDiscordDeathFormat(username, finalDeathMessage);
-                DiscordListener.sendNativeChannelMessage(ConfigHandler.channelsConfig.chatChannelID, formatPattern.replace("%player%", username).replace("%message%", finalDeathMessage), false);
+                String formatPattern = MessageConfigHandler.messages != null && MessageConfigHandler.messages.discordDeath != null ? MessageConfigHandler.messages.discordDeath : "";
+                if (formatPattern.isEmpty()) formatPattern = LanguageManager.getDiscordDeathFormat(username, finalDeathMessage);
+                String format = formatPattern.replace("%player%", username).replace("%message%", finalDeathMessage);
+                DiscordListener.sendNativeChannelMessage(ConfigHandler.channelsConfig.chatChannelID, format, false);
             });
         }
     }
@@ -151,15 +181,25 @@ public class MinecraftListener {
     public void onPlayerAchievement(AchievementEvent event) {
         if (event.entityPlayer == null || event.achievement == null) return;
         if (!(event.entityPlayer instanceof EntityPlayerMP)) return;
+        
         final EntityPlayerMP playerMP = (EntityPlayerMP) event.entityPlayer;
+        
+        // 保留：1.7.10 原生防刷屏核對機制
         StatisticsFile statsFile = net.minecraft.server.MinecraftServer.getServer().getConfigurationManager().func_152602_a(playerMP);
-        if (statsFile != null && !statsFile.hasAchievementUnlocked(event.achievement)) {
-            final String username = playerMP.getCommandSenderName();
-            final String achievementName = event.achievement.func_150951_e().getUnformattedText();
-            RfgExampleMod.getExecutor().submit(() -> {
-                String formatPattern = LanguageManager.getDiscordAchievementFormat(username, achievementName);
-                DiscordListener.sendNativeChannelMessage(ConfigHandler.channelsConfig.chatChannelID, formatPattern.replace("%player%", username).replace("%achievement%", achievementName), false);
-            });
+
+        if (statsFile != null) {
+            if (!statsFile.hasAchievementUnlocked(event.achievement)) {
+                final String username = playerMP.getCommandSenderName();
+                // 輕量化策略：直接抓取原文字串，不包裝肥大的字典檔
+                final String achievementName = event.achievement.func_150951_e().getUnformattedText();
+
+                RfgExampleMod.getExecutor().submit(() -> {
+                    String formatPattern = MessageConfigHandler.messages != null && MessageConfigHandler.messages.discordAchievement != null ? MessageConfigHandler.messages.discordAchievement : "";
+                    if (formatPattern.isEmpty()) formatPattern = LanguageManager.getDiscordAchievementFormat(username, achievementName);
+                    String format = formatPattern.replace("%player%", username).replace("%achievement%", achievementName);
+                    DiscordListener.sendNativeChannelMessage(ConfigHandler.channelsConfig.chatChannelID, format, false);
+                });
+            }
         }
     }
 }
