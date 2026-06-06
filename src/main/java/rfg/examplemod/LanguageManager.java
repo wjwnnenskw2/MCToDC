@@ -3,6 +3,7 @@ package rfg.examplemod;
 public class LanguageManager {
 
     public static String getMcKickReason(String code) {
+<<<<<<< HEAD
         String notice = MessageConfigHandler.messages.minecraftLoginPanelNotice;
         String instruction = MessageConfigHandler.messages.minecraftLoginPanelInstruction;
         String footer = MessageConfigHandler.messages.minecraftLoginPanelFooter;
@@ -16,6 +17,18 @@ public class LanguageManager {
                "§e" + instruction + "\n" +
                "§b!verify " + code + "\n\n" +
                "§7" + footer;
+=======
+        if ("zh_tw".equalsIgnoreCase(ConfigHandler.generalConfig.language)) {
+            return "§c 您尚未通過 Discord 綁定驗證！\n\n" +
+                   "§e請前往伺服器 Discord 聯動頻道\n" +
+                   "§e輸入驗證指令：§b!verify " + code + "\n\n" +
+                   "";
+        }
+        return "§c You have not verified your account on Discord yet!\n\n" +
+               "§ePlease go to our Discord link channel\n" +
+               "§eand type the verify command: §b!verify " + code + "\n\n" +
+               "";
+>>>>>>> parent of 7c4c64d (Delete src/main/java/rfg/examplemod directory)
     }
 
     public static String getDiscordPlayerJoined(String username, String discordName) {
@@ -75,12 +88,17 @@ public class LanguageManager {
         return "**Verification Success**: Your Discord account has been linked to **" + username + "**! You can join the server now.";
     }
 
+<<<<<<< HEAD
+=======
+    // 🎯【TODO: 新增成就多語系支援】
+>>>>>>> parent of 7c4c64d (Delete src/main/java/rfg/examplemod directory)
     public static String getDiscordAchievementFormat(String username, String achievementName) {
         if ("zh_tw".equalsIgnoreCase(ConfigHandler.generalConfig.language)) {
             return "**" + username + "** 獲得了成就：[" + achievementName + "]";
         }
         return "**" + username + "** has just earned the achievement: [" + achievementName + "]";
     }
+<<<<<<< HEAD
     
     public static String getLogModuleDisabled() {
         if ("zh_tw".equalsIgnoreCase(ConfigHandler.generalConfig.language)) return "[MCToDC] 模組在設定檔中已關閉，跳過核心載入。";
@@ -101,4 +119,6 @@ public class LanguageManager {
         if ("zh_tw".equalsIgnoreCase(ConfigHandler.generalConfig.language)) return "[MCToDC] 伺服器正在關閉...";
         return "[MCToDC] Server is shutting down...";
     }
+=======
+>>>>>>> parent of 7c4c64d (Delete src/main/java/rfg/examplemod directory)
 }

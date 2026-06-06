@@ -1,5 +1,6 @@
 package rfg.examplemod;
 
+<<<<<<< HEAD
 import net.minecraft.server.MinecraftServer;
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
@@ -155,4 +156,12 @@ public class DiscordListener {
             if (ConfigHandler.generalConfig.debugging) e.printStackTrace();
         }
     }
+=======
+/**
+ * MCToDC - Native REST API Override Pipeline
+ * Obsolete context file kept for structure compatibility. All routines decoupled to main core threads.
+ */
+public class DiscordListener {
+    // Completely empty to solve compile symbol references safely
+>>>>>>> parent of 7c4c64d (Delete src/main/java/rfg/examplemod directory)
 }
