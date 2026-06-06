@@ -7,10 +7,7 @@ import net.minecraft.entity.player.EntityPlayerMP;
 import net.minecraft.stats.StatisticsFile;
 import net.minecraft.util.ChatComponentTranslation;
 import net.minecraftforge.event.ServerChatEvent;
-
 import net.minecraftforge.event.CommandEvent;
-
-
 import net.minecraftforge.event.entity.living.LivingDeathEvent;
 import net.minecraftforge.event.entity.player.AchievementEvent;
 
@@ -99,11 +96,7 @@ public class MinecraftListener {
                 }
 
                 String announce = formatPattern.replace("%player%", username).replace("%discord%", finalDiscordName);
-
                 DiscordListener.sendNativeChannelMessage(ConfigHandler.channelsConfig.chatChannelID, announce, false);
-
-                RfgExampleMod.sendNativeChannelMessage(ConfigHandler.channelsConfig.chatChannelID, announce);
-
             } else {
                 String code = String.format("%04d", (int)(Math.random() * 10000));
                 RfgExampleMod.pendingVerifications.put(username, new String[]{code, uuid});
@@ -147,11 +140,7 @@ public class MinecraftListener {
             }
 
             String announce = formatPattern.replace("%player%", username);
-
             DiscordListener.sendNativeChannelMessage(ConfigHandler.channelsConfig.chatChannelID, announce, false);
-
-            RfgExampleMod.sendNativeChannelMessage(ConfigHandler.channelsConfig.chatChannelID, announce);
-
         });
     }
 
@@ -183,17 +172,12 @@ public class MinecraftListener {
                 }
 
                 String format = formatPattern.replace("%player%", username).replace("%message%", message);
-
                 DiscordListener.sendNativeChannelMessage(ConfigHandler.channelsConfig.chatChannelID, format, false);
-
-                RfgExampleMod.sendNativeChannelMessage(ConfigHandler.channelsConfig.chatChannelID, format);
-
             }
         });
     }
 
     @SubscribeEvent
-
     public void onCommand(CommandEvent event) {
         if (!ConfigHandler.chatConfig.sendCommandMessages) return;
         if (event.sender == null) return;
@@ -226,8 +210,6 @@ public class MinecraftListener {
     }
 
     @SubscribeEvent
-
-
     public void onPlayerDeath(LivingDeathEvent event) {
         if (event.entityLiving instanceof EntityPlayer) {
             final EntityPlayer player = (EntityPlayer) event.entityLiving;
@@ -265,18 +247,10 @@ public class MinecraftListener {
                 }
 
                 String format = formatPattern.replace("%player%", username).replace("%message%", finalDeathMessage);
-
                 DiscordListener.sendNativeChannelMessage(ConfigHandler.channelsConfig.chatChannelID, format, false);
-
-                RfgExampleMod.sendNativeChannelMessage(ConfigHandler.channelsConfig.chatChannelID, format);
-
             });
         }
     }
-
-
-
-    // TODO: 修正 1.7.10 伺服器端成就連擊刷屏 Bug，利用 StatisticsFile 核對真實進度
 
     @SubscribeEvent
     public void onPlayerAchievement(AchievementEvent event) {
@@ -285,11 +259,6 @@ public class MinecraftListener {
         
         final EntityPlayerMP playerMP = (EntityPlayerMP) event.entityPlayer;
         
-
-
-        // 🚀 1.7.10 正統防禦：向伺服器中央配置管理器抽取該玩家的統計數據檔案
-        // 修正傳入參數：傳入玩家實體物件 playerMP 替代原先的名字字串
-
         StatisticsFile statsFile = net.minecraft.server.MinecraftServer.getServer()
                 .getConfigurationManager()
                 .func_152602_a(playerMP);
@@ -312,11 +281,7 @@ public class MinecraftListener {
                     }
 
                     String format = formatPattern.replace("%player%", username).replace("%achievement%", achievementName);
-
                     DiscordListener.sendNativeChannelMessage(ConfigHandler.channelsConfig.chatChannelID, format, false);
-
-                    RfgExampleMod.sendNativeChannelMessage(ConfigHandler.channelsConfig.chatChannelID, format);
-
                 });
             }
         }
