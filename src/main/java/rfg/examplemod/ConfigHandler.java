@@ -2,6 +2,7 @@ package rfg.examplemod;
 
 import com.moandjiezana.toml.Toml;
 import org.apache.logging.log4j.Logger;
+
 import javax.crypto.Cipher;
 import javax.crypto.spec.SecretKeySpec;
 import java.io.File;
@@ -34,6 +35,7 @@ public class ConfigHandler {
     }
 
     public static class ChannelsAndWebhooksConfig {
+        public String guildID = "0"; // 👈 新增：儲存 Discord 伺服器 ID
         public String chatChannelID = "0";
         public String consoleChannelID = "0";
         public String chatWebhook = "";
@@ -61,10 +63,16 @@ public class ConfigHandler {
 
     public static void init(File configDirectory, Logger log) {
         logger = log;
-        if (!configDirectory.exists()) configDirectory.mkdirs();
+        if (!configDirectory.exists()) {
+            configDirectory.mkdirs();
+        }
         configFile = new File(configDirectory, "rfg-discord-bridge.toml");
         if (!configFile.exists()) {
-            try { writeDefaultConfig(); } catch (IOException e) { e.printStackTrace(); }
+            try {
+                writeDefaultConfig();
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
         }
         loadConfig();
     }
@@ -72,9 +80,9 @@ public class ConfigHandler {
     private static void writeDefaultConfig() throws IOException {
         try (BufferedWriter writer = new BufferedWriter(new OutputStreamWriter(new FileOutputStream(configFile), StandardCharsets.UTF_8))) {
             writer.write("# MCToDC - Infrastructure Config\n\n");
-            writer.write("[general]\nenabled = true\ndebugging = false\nlanguage = \"en_us\"\nconfigVersion = 30\n\n");
-            writer.write("[botConfig]\nbotToken = \"\"\nprintInviteLink = true\nsilentReplies = true\nstatusUpdateInterval = 30\n\n");
-            writer.write("[channelsAndWebhooks]\n[channelsAndWebhooks.channels]\nchatChannelID = \"0\"\nconsoleChannelID = \"0\"\n\n");
+            writer.write("[general]\nenabled = true\ndebugging = false\nlanguage = \"en_us\" # Available: en_us, zh_tw\nconfigVersion = 30\n\n");
+            writer.write("[botConfig]\nenabled = true\nbotToken = \"\"\nprintInviteLink = true\nsilentReplies = true\nstatusUpdateInterval = 30\n\n");
+            writer.write("[channelsAndWebhooks]\n[channelsAndWebhooks.channels]\nguildID = \"0\"\nchatChannelID = \"0\"\nconsoleChannelID = \"0\"\n\n");
             writer.write("[channelsAndWebhooks.webhooks]\nchatWebhook = \"\"\nconsoleWebhook = \"\"\n\n");
             writer.write("[chat]\nsendConsoleMessages = false\nsendCommandMessages = false\n\n");
             writer.write("[database]\nuseRemoteSQL = false\nsqlUrl = \"jdbc:mysql://localhost:3306/minecraft_db?useSSL=false&serverTimezone=UTC\"\nsqlUser = \"root\"\nsqlPassword = \"\"\nsqlTableName = \"mctodc_whitelist\"\n");
@@ -88,26 +96,30 @@ public class ConfigHandler {
             generalConfig.enabled = config.getBoolean("general.enabled", true);
             generalConfig.debugging = config.getBoolean("general.debugging", false);
             generalConfig.language = config.getString("general.language", "en_us");
+            Long cv = config.getLong("general.configVersion");
+            if (cv != null) generalConfig.configVersion = cv.intValue();
 
             String hwKey = getHardwareKey();
             File secretFile = new File(configFile.getParentFile(), ".mctodc-secret");
-            String rawToken = config.getString("botConfig.botToken", "");
 
+            String rawToken = config.getString("botConfig.botToken", "");
             if ("ENCRYPTED_AND_LOADED".equals(rawToken)) {
                 if (secretFile.exists()) {
-                    try {
-                        String encryptedData = new String(Files.readAllBytes(secretFile.toPath()), StandardCharsets.UTF_8).trim();
-                        actualBotToken = decrypt(encryptedData, hwKey);
-                    } catch (Exception e) { logger.error("[MCToDC] Hardware signature mismatch. Please reset token."); }
+                    String encryptedData = new String(Files.readAllBytes(secretFile.toPath()), StandardCharsets.UTF_8).trim();
+                    actualBotToken = decrypt(encryptedData, hwKey);
+                } else {
+                    logger.error("[MCToDC] Secure container asset (.mctodc-secret) missed. Reset your plain token in toml.");
                 }
             } else if (rawToken != null && !rawToken.isEmpty()) {
                 actualBotToken = rawToken;
                 String encryptedData = encrypt(rawToken, hwKey);
                 Files.write(secretFile.toPath(), encryptedData.getBytes(StandardCharsets.UTF_8));
+
                 try {
                     String tomlContent = new String(Files.readAllBytes(configFile.toPath()), StandardCharsets.UTF_8);
                     String obfuscatedContent = tomlContent.replace("botToken = \"" + rawToken + "\"", "botToken = \"ENCRYPTED_AND_LOADED\"");
                     Files.write(configFile.toPath(), obfuscatedContent.getBytes(StandardCharsets.UTF_8));
+                    logger.info("[MCToDC] Plain token encrypted with hardware baseline successfully.");
                 } catch (Exception e) {}
             }
 
@@ -116,6 +128,8 @@ public class ConfigHandler {
             Long sui = config.getLong("botConfig.statusUpdateInterval");
             if (sui != null) botConfig.statusUpdateInterval = sui.intValue();
 
+            // 👈 新增：讀取設定檔中的 Guild ID
+            channelsConfig.guildID = config.getString("channelsAndWebhooks.channels.guildID", "0");
             channelsConfig.chatChannelID = config.getString("channelsAndWebhooks.channels.chatChannelID", "0");
             channelsConfig.consoleChannelID = config.getString("channelsAndWebhooks.channels.consoleChannelID", "0");
             channelsConfig.chatWebhook = config.getString("channelsAndWebhooks.webhooks.chatWebhook", "");
@@ -134,29 +148,38 @@ public class ConfigHandler {
 
             if ("ENCRYPTED_AND_LOADED".equals(rawSqlPassword)) {
                 if (dbSecretFile.exists()) {
-                    try {
-                        String encryptedPw = new String(Files.readAllBytes(dbSecretFile.toPath()), StandardCharsets.UTF_8).trim();
-                        databaseConfig.sqlPassword = decrypt(encryptedPw, hwKey);
-                    } catch (Exception e) { logger.error("[MCToDC] Hardware signature mismatch for DB password."); }
+                    String encryptedPw = new String(Files.readAllBytes(dbSecretFile.toPath()), StandardCharsets.UTF_8).trim();
+                    databaseConfig.sqlPassword = decrypt(encryptedPw, hwKey);
+                } else {
+                    databaseConfig.sqlPassword = "";
+                    logger.error("[MCToDC] Secure database asset (.mctodc-db-secret) missed. Reset your plain password in toml.");
                 }
             } else if (rawSqlPassword != null && !rawSqlPassword.isEmpty()) {
                 databaseConfig.sqlPassword = rawSqlPassword;
                 String encryptedPw = encrypt(rawSqlPassword, hwKey);
                 Files.write(dbSecretFile.toPath(), encryptedPw.getBytes(StandardCharsets.UTF_8));
+
                 try {
                     String tomlContent = new String(Files.readAllBytes(configFile.toPath()), StandardCharsets.UTF_8);
-                    String obfuscatedContent = tomlContent.replace("sqlPassword = \"" + rawSqlPassword + "\"", "sqlPassword = \"ENCRYPTED_AND_LOADED\"");
+                    String obfuscatedContent = tomlContent.replace("sqlPassword = \"\"\"", "sqlPassword = \"ENCRYPTED_AND_LOADED\"")
+                                                          .replace("sqlPassword = \"" + rawSqlPassword + "\"", "sqlPassword = \"ENCRYPTED_AND_LOADED\"");
                     Files.write(configFile.toPath(), obfuscatedContent.getBytes(StandardCharsets.UTF_8));
-                } catch (Exception e) {}
+                    logger.info("[MCToDC] Plaintext SQL password has been securely obfuscated on disk.");
+                } catch (Exception e) {
+                    logger.error("[MCToDC] Failed to overwrite plaintext SQL password: " + e.getMessage());
+                }
             } else {
                 databaseConfig.sqlPassword = "";
             }
+
         } catch (Exception e) {
             logger.error("[MCToDC] Config parsing failure: " + e.getMessage());
         }
     }
 
-    public static String getBotToken() { return actualBotToken; }
+    public static String getBotToken() {
+        return actualBotToken;
+    }
 
     private static String getHardwareKey() throws Exception {
         String rawId = System.getProperty("user.name") + System.getProperty("os.arch") + Runtime.getRuntime().availableProcessors();
@@ -180,4 +203,6 @@ public class ConfigHandler {
         cipher.init(Cipher.DECRYPT_MODE, secretKeySpec);
         return new String(cipher.doFinal(Base64.getDecoder().decode(value)), StandardCharsets.UTF_8);
     }
+
+    public static File getConfigFile() { return configFile; }
 }

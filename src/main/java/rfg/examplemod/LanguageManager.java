@@ -1,6 +1,7 @@
 package rfg.examplemod;
 
 public class LanguageManager {
+
     public static String getMcKickReason(String code) {
         String notice = MessageConfigHandler.messages.minecraftLoginPanelNotice;
         String instruction = MessageConfigHandler.messages.minecraftLoginPanelInstruction;
@@ -14,6 +15,18 @@ public class LanguageManager {
                "§e" + instruction + "\n" +
                "§b!verify " + code + "\n\n" +
                "§7" + footer;
+    }
+
+    // 👈 新增：當玩家被發現退群時的專用遊戲內 Kick 面板提示
+    public static String getMcLeftGuildKickReason() {
+        if ("zh_tw".equalsIgnoreCase(ConfigHandler.generalConfig.language)) {
+            return "§c連線拒絕：您目前不在指定的 Discord 伺服器中！\n\n" +
+                   "§e檢測到您的帳號雖然曾有綁定紀錄，但目前已退出了官方群組。\n" +
+                   "§b請重新加入 Discord 伺服器，並於進服時獲取新的驗證碼重新綁定。";
+        }
+        return "§cConnection Refused: You are not in the designated Discord Server!\n\n" +
+               "§eWe detected that you have left or been kicked from the official community.\n" +
+               "§bPlease re-join the Discord Guild to recover your gameplay access permit.";
     }
 
     public static String getDiscordPlayerJoined(String username, String discordName) {

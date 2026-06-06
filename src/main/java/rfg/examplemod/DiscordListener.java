@@ -9,7 +9,33 @@ import java.net.URL;
 import java.nio.charset.StandardCharsets;
 
 public class DiscordListener {
+    
     private static String lastChannelMessageId = "0";
+
+    public static boolean isUserInDiscordServer(String discordUserId) {
+        String token = ConfigHandler.getBotToken();
+        String guildId = ConfigHandler.channelsConfig.guildID;
+        
+        if (guildId == null || guildId.equals("0") || guildId.isEmpty() || token.isEmpty()) {
+            return true; // 預設放行以避免未設定時集體被踢
+        }
+        
+        try {
+            URL url = new URL("https://discord.com/api/v9/guilds/" + guildId + "/members/" + discordUserId);
+            HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+            conn.setRequestMethod("GET");
+            conn.setRequestProperty("Authorization", "Bot " + token);
+            conn.setRequestProperty("User-Agent", "DiscordBot (Minecraft 1.7.10, Native-REST)");
+            conn.setConnectTimeout(2000);
+            conn.setReadTimeout(2000);
+
+            int responseCode = conn.getResponseCode();
+            return responseCode == 200; // 只有 200 OK 代表人在群組內
+        } catch (Exception e) {
+            if (ConfigHandler.generalConfig.debugging) e.printStackTrace();
+            return false; // 網路異常時安全起見不放行
+        }
+    }
 
     public static void pollChannelMessages() {
         String channelId = ConfigHandler.channelsConfig.chatChannelID;
@@ -51,6 +77,7 @@ public class DiscordListener {
         } catch (Exception e) {
             if (ConfigHandler.generalConfig.debugging) {
                 RfgExampleMod.logger.error("[MCToDC] Poll Error: " + e.getMessage());
+                e.printStackTrace();
             }
         }
     }
@@ -148,6 +175,8 @@ public class DiscordListener {
             conn.setRequestMethod("DELETE");
             conn.setRequestProperty("Authorization", "Bot " + ConfigHandler.getBotToken());
             conn.getResponseCode();
-        } catch (Exception e) {}
+        } catch (Exception e) {
+            if (ConfigHandler.generalConfig.debugging) e.printStackTrace();
+        }
     }
 }

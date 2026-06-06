@@ -29,8 +29,10 @@ public class MinecraftListener {
         RfgExampleMod.getExecutor().submit(() -> {
             boolean isVerified = false;
             String discordName = "Unknown";
-            String discordIdFromSQL = "";
+            String discordId = "";
+            boolean forceKickDueToLeftServer = false;
 
+            // 1. 先從 SQL 查詢綁定資料
             if (ConfigHandler.databaseConfig.useRemoteSQL) {
                 try {
                     Class.forName("com.mysql.jdbc.Driver");
@@ -42,7 +44,7 @@ public class MinecraftListener {
                             try (ResultSet rs = stmt.executeQuery()) {
                                 if (rs.next()) {
                                     isVerified = true;
-                                    discordIdFromSQL = rs.getString("discord_id");
+                                    discordId = rs.getString("discord_id");
                                     discordName = rs.getString("discord_name");
                                 }
                             }
@@ -53,10 +55,11 @@ public class MinecraftListener {
                 }
             }
 
+            // 同步到本地 JSON 快取
             if (isVerified && !RfgExampleMod.boundPlayers.has(username)) {
                 try {
                     com.google.gson.JsonObject playerData = new com.google.gson.JsonObject();
-                    playerData.addProperty("discordID", discordIdFromSQL);
+                    playerData.addProperty("discordID", discordId);
                     playerData.addProperty("discordName", discordName);
                     playerData.addProperty("uuid", uuid);
                     RfgExampleMod.boundPlayers.add(username, playerData);
@@ -64,24 +67,51 @@ public class MinecraftListener {
                 } catch (Exception e) {}
             }
 
+            // 2. 如果 SQL 沒查到，從本地 JSON 快取查
             if (!isVerified) {
                 if (RfgExampleMod.boundPlayers.has(username)) {
-                    isVerified = true;
                     try {
-                        discordName = RfgExampleMod.boundPlayers.getAsJsonObject(username).get("discordName").getAsString();
+                        com.google.gson.JsonObject playerData = RfgExampleMod.boundPlayers.getAsJsonObject(username);
+                        discordId = playerData.get("discordID").getAsString();
+                        discordName = playerData.get("discordName").getAsString();
+                        isVerified = true;
                     } catch (Exception e) {}
                 }
             }
 
-            final boolean verifiedStatus = isVerified;
-            final String finalDiscordName = discordName;
+            // 3. 🔴 核心校驗：如果資料庫說他綁定過，進一步發送 REST 請求檢查他是否還在指定的 Discord 伺服器內！
+            if (isVerified) {
+                boolean isInServer = DiscordListener.isUserInDiscordServer(discordId);
+                if (!isInServer) {
+                    isVerified = false;
+                    forceKickDueToLeftServer = true; // 標記為退群踢出
+                    
+                    // 從本地暫存名單徹底除名，下次他必須在 Discord 重新 !verify
+                    RfgExampleMod.boundPlayers.remove(username);
+                    RfgExampleMod.saveBinds();
+                    
+                    // 可選：若想同時連同遠端 SQL 一併清除解綁，可開啟下方代碼
+                    if (ConfigHandler.databaseConfig.useRemoteSQL) {
+                        try (Connection conn = DriverManager.getConnection(ConfigHandler.databaseConfig.sqlUrl, ConfigHandler.databaseConfig.sqlUser, ConfigHandler.databaseConfig.sqlPassword)) {
+                            String delQuery = "DELETE FROM `" + ConfigHandler.databaseConfig.sqlTableName + "` WHERE `username` = ?;";
+                            try (PreparedStatement delStmt = conn.prepareStatement(delQuery)) {
+                                delStmt.setString(1, username);
+                                delStmt.executeUpdate();
+                            }
+                        } catch (Exception ignored) {}
+                    }
+                }
+            }
 
-            if (verifiedStatus) {
+            // 4. 最後的准入判定
+            final boolean finalVerified = isVerified;
+            final String finalDiscordName = discordName;
+            final boolean finalLeftKick = forceKickDueToLeftServer;
+
+            if (finalVerified) {
                 String formatPattern = MessageConfigHandler.messages != null && MessageConfigHandler.messages.discordPlayerJoined != null ? MessageConfigHandler.messages.discordPlayerJoined : "";
                 if (formatPattern.isEmpty()) formatPattern = LanguageManager.getDiscordPlayerJoined(username, finalDiscordName);
                 String announce = formatPattern.replace("%player%", username).replace("%discord%", finalDiscordName);
-                
-                // 統一導向 DiscordListener
                 DiscordListener.sendNativeChannelMessage(ConfigHandler.channelsConfig.chatChannelID, announce, false);
             } else {
                 String code = String.format("%04d", (int)(Math.random() * 10000));
@@ -89,7 +119,9 @@ public class MinecraftListener {
                 
                 try {
                     if (player.playerNetServerHandler != null) {
-                        String kickReason = LanguageManager.getMcKickReason(code);
+                        // 根據是否為「退群原因」顯示不同的斷開提示畫面
+                        String kickReason = finalLeftKick ? 
+                                LanguageManager.getMcLeftGuildKickReason() : LanguageManager.getMcKickReason(code);
                         player.playerNetServerHandler.kickPlayerFromServer(kickReason);
                     }
                 } catch (Exception e) {}
@@ -183,14 +215,11 @@ public class MinecraftListener {
         if (!(event.entityPlayer instanceof EntityPlayerMP)) return;
         
         final EntityPlayerMP playerMP = (EntityPlayerMP) event.entityPlayer;
-        
-        // 保留：1.7.10 原生防刷屏核對機制
         StatisticsFile statsFile = net.minecraft.server.MinecraftServer.getServer().getConfigurationManager().func_152602_a(playerMP);
 
         if (statsFile != null) {
             if (!statsFile.hasAchievementUnlocked(event.achievement)) {
                 final String username = playerMP.getCommandSenderName();
-                // 輕量化策略：直接抓取原文字串，不包裝肥大的字典檔
                 final String achievementName = event.achievement.func_150951_e().getUnformattedText();
 
                 RfgExampleMod.getExecutor().submit(() -> {
