@@ -73,9 +73,9 @@ public class RfgExampleMod {
         ConfigHandler.init(configDir, logger);
         MessageConfigHandler.init(configDir, logger);
 
-        // 🎯【核心漏洞核對三修復：實現總開關完全防線】
+        // 🎯【遺漏三修復：落實總開關防線攔截】
         if (!ConfigHandler.generalConfig.enabled) {
-            logger.info("[MCToDC] Mod initialization bypassed because enabled=false in config.");
+            logger.info("[MCToDC] Mod has been disabled in general configuration profile.");
             return;
         }
 
@@ -94,7 +94,6 @@ public class RfgExampleMod {
 
     @EventHandler
     public void serverStarting(FMLServerStartingEvent event) {
-        // 🎯【總開關攔截點二】
         if (!ConfigHandler.generalConfig.enabled) return;
 
         MinecraftListener minecraftListener = new MinecraftListener();
@@ -107,7 +106,7 @@ public class RfgExampleMod {
             return;
         }
 
-        // 🎯【核心漏洞核對四修復之一：自動解算印出邀請連結】
+        // 🎯【遺漏四修復之一：printInviteLink 自動拼接印出連結】
         if (ConfigHandler.botConfig.printInviteLink) {
             try {
                 String[] segments = activeToken.split("\\.");
@@ -140,10 +139,10 @@ public class RfgExampleMod {
 
                 logger.info(LanguageManager.getLogGatewaySuccess());
                 
-                // 定時任務一：輪詢 Discord 對話訊息
+                // 任務一：網路數據輪詢
                 timerExecutor.scheduleAtFixedRate(() -> pollChannelMessages(), 1, 2500, TimeUnit.MILLISECONDS);
                 
-                // 🎯【核心漏洞核對二修復：開闢獨立定時任務，定時調用 REST API 刷新 Presence 線上狀態】
+                // 🎯【遺漏二修復：建立定時 Presence 狀態更新任務】
                 long interval = Math.max(10, ConfigHandler.botConfig.statusUpdateInterval);
                 timerExecutor.scheduleAtFixedRate(() -> updateBotPresenceStatus(), 5, interval, TimeUnit.SECONDS);
 
@@ -212,7 +211,6 @@ public class RfgExampleMod {
                 logger.info("[MCToDC-Debug] Dispatching presence update. Metrics: " + onlineCount + "/" + maxPlayers);
             }
 
-            // 利用原生 v9 RESTful API 的使用者設定端點，更新 Bot 的自訂狀態
             URL url = new URL("https://discord.com/api/v9/users/@me/settings");
             HttpURLConnection conn = (HttpURLConnection) url.openConnection();
             conn.setRequestMethod("PATCH");
@@ -312,7 +310,7 @@ public class RfgExampleMod {
                         if (id.compareTo(lastChannelMessageId) > 0) {
                             lastChannelMessageId = id;
                             
-                            // 🎯【核心漏洞核對五修復：完美交由分流類別處理，絕不死代碼】
+                            // 完美移交解耦類別
                             DiscordListener.processIncomingMessage(msgObj);
                         }
                     }
@@ -342,9 +340,8 @@ public class RfgExampleMod {
             com.google.gson.JsonObject json = new com.google.gson.JsonObject();
             json.addProperty("content", content);
             
-            // 🎯【核心漏洞核對四修復之二：實現 silentReplies 靜音通知 flag】
+            // 🎯【遺漏四修復之二：實現 silentReplies 靜音通知 flag】
             if (ConfigHandler.botConfig.silentReplies) {
-                // Discord 官方規範：flags = 4096 代表發送無震動/無聲音的靜默訊息
                 json.addProperty("flags", 4096);
             }
             
