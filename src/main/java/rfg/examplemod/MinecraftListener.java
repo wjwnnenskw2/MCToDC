@@ -31,24 +31,39 @@ public class MinecraftListener {
             String discordIdFromSQL = "";
 
             if (ConfigHandler.databaseConfig.useRemoteSQL) {
-                try {
-                    Class.forName("com.mysql.jdbc.Driver");
-                    try (Connection conn = DriverManager.getConnection(ConfigHandler.databaseConfig.sqlUrl, ConfigHandler.databaseConfig.sqlUser, ConfigHandler.databaseConfig.sqlPassword)) {
-                        String query = "SELECT `discord_id`, `discord_name` FROM `" + ConfigHandler.databaseConfig.sqlTableName + "` WHERE `username` = ? OR `uuid` = ? LIMIT 1;";
-                        try (PreparedStatement stmt = conn.prepareStatement(query)) {
-                            stmt.setString(1, username);
-                            stmt.setString(2, uuid);
-                            try (ResultSet rs = stmt.executeQuery()) {
-                                if (rs.next()) {
-                                    isVerified = true;
-                                    discordIdFromSQL = rs.getString("discord_id");
-                                    discordName = rs.getString("discord_name");
+                // // TODO: 實作 JDBC 連線長休逾時與隨機斷線的防禦自癒重連機制
+                int maxRetries = 2;
+                while (maxRetries > 0) {
+                    try {
+                        Class.forName("com.mysql.jdbc.Driver");
+                        try (Connection conn = DriverManager.getConnection(ConfigHandler.databaseConfig.sqlUrl, ConfigHandler.databaseConfig.sqlUser, ConfigHandler.databaseConfig.sqlPassword)) {
+                            // 主動對資料庫發送活性探針（2秒內若無回應或已過期，則視為死連線）
+                            if (conn != null && conn.isValid(2)) {
+                                String query = "SELECT `discord_id`, `discord_name` FROM `" + ConfigHandler.databaseConfig.sqlTableName + "` WHERE `username` = ? OR `uuid` = ? LIMIT 1;";
+                                try (PreparedStatement stmt = conn.prepareStatement(query)) {
+                                    stmt.setString(1, username);
+                                    stmt.setString(2, uuid);
+                                    try (ResultSet rs = stmt.executeQuery()) {
+                                        if (rs.next()) {
+                                            isVerified = true;
+                                            discordIdFromSQL = rs.getString("discord_id");
+                                            discordName = rs.getString("discord_name");
+                                        }
+                                    }
                                 }
+                                break; // 執行成功，直接跳出重試循環
+                            } else {
+                                throw new java.sql.SQLException("Stale or invalid JDBC link detected.");
                             }
                         }
+                    } catch (Exception e) {
+                        maxRetries--;
+                        if (maxRetries == 0) {
+                            RfgExampleMod.logger.error("[MCToDC] Asynchronous SQL check failure after retries: " + e.getMessage());
+                        } else {
+                            try { Thread.sleep(500); } catch (Exception ignored) {} // 微小延遲後執行連線自癒
+                        }
                     }
-                } catch (Exception e) {
-                    RfgExampleMod.logger.error("[MCToDC] Asynchronous SQL check failure: " + e.getMessage());
                 }
             }
 
@@ -219,7 +234,6 @@ public class MinecraftListener {
         }
     }
 
-    // TODO: 修正 1.7.10 伺服器端成就連擊刷屏 Bug，利用 StatisticsFile 核對真實進度
     @SubscribeEvent
     public void onPlayerAchievement(AchievementEvent event) {
         if (event.entityPlayer == null || event.achievement == null) return;
@@ -227,8 +241,6 @@ public class MinecraftListener {
         
         final EntityPlayerMP playerMP = (EntityPlayerMP) event.entityPlayer;
         
-        // 🚀 1.7.10 正統防禦：向伺服器中央配置管理器抽取該玩家的統計數據檔案
-        // 修正傳入參數：傳入玩家實體物件 playerMP 替代原先的名字字串
         StatisticsFile statsFile = net.minecraft.server.MinecraftServer.getServer()
                 .getConfigurationManager()
                 .func_152602_a(playerMP);

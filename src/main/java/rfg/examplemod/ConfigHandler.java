@@ -79,8 +79,6 @@ public class ConfigHandler {
     private static void writeDefaultConfig() throws IOException {
         try (BufferedWriter writer = new BufferedWriter(new OutputStreamWriter(new FileOutputStream(configFile), StandardCharsets.UTF_8))) {
             writer.write("# MCToDC - Infrastructure Config\n\n");
-            
-            // 🎯【TODO: 補上可選語系註釋】：讓服主一目了然有哪些參數可填
             writer.write("[general]\nenabled = true\ndebugging = false\nlanguage = \"en_us\" # Available: en_us, zh_tw\nconfigVersion = 30\n\n");
             writer.write("[botConfig]\nbotToken = \"\"\nprintInviteLink = true\nsilentReplies = true\nstatusUpdateInterval = 30\n\n");
             writer.write("[channelsAndWebhooks]\n[channelsAndWebhooks.channels]\nchatChannelID = \"0\"\nconsoleChannelID = \"0\"\n\n");
@@ -106,8 +104,26 @@ public class ConfigHandler {
             String rawToken = config.getString("botConfig.botToken", "");
             if ("ENCRYPTED_AND_LOADED".equals(rawToken)) {
                 if (secretFile.exists()) {
-                    String encryptedData = new String(Files.readAllBytes(secretFile.toPath()), StandardCharsets.UTF_8).trim();
-                    actualBotToken = decrypt(encryptedData, hwKey);
+                    try {
+                        String encryptedData = new String(Files.readAllBytes(secretFile.toPath()), StandardCharsets.UTF_8).trim();
+                        actualBotToken = decrypt(encryptedData, hwKey);
+                    } catch (Exception e) {
+                        actualBotToken = "";
+                        // 🎯【預設英文，zh_tw 分流提示】
+                        if ("zh_tw".equalsIgnoreCase(generalConfig.language)) {
+                            logger.error("==================================================================");
+                            logger.error("[MCToDC] ⚠️ 安全密鑰解密失敗！偵測到目前硬體特徵與加密時不符。");
+                            logger.error("[MCToDC] 提示：若您更換了主機、網卡、或更換至 Docker 容器，請刪除");
+                            logger.error("[MCToDC] config/ 資料夾底下的隱藏金鑰檔案，並重新於 toml 填入明文 Token。");
+                            logger.error("==================================================================");
+                        } else {
+                            logger.error("==================================================================");
+                            logger.error("[MCToDC] ⚠️ Decryption failed! Hardware baseline signature mismatched.");
+                            logger.error("[MCToDC] Notice: If you migrated hosts, changed NICs, or restarted in Docker,");
+                            logger.error("[MCToDC] please delete the hidden secret asset under config/ and refill plain token.");
+                            logger.error("==================================================================");
+                        }
+                    }
                 } else {
                     logger.error("[MCToDC] Secure container asset (.mctodc-secret) missed. Reset your plain token in toml.");
                 }
@@ -147,8 +163,18 @@ public class ConfigHandler {
 
             if ("ENCRYPTED_AND_LOADED".equals(rawSqlPassword)) {
                 if (dbSecretFile.exists()) {
-                    String encryptedPw = new String(Files.readAllBytes(dbSecretFile.toPath()), StandardCharsets.UTF_8).trim();
-                    databaseConfig.sqlPassword = decrypt(encryptedPw, hwKey);
+                    try {
+                        String encryptedPw = new String(Files.readAllBytes(dbSecretFile.toPath()), StandardCharsets.UTF_8).trim();
+                        databaseConfig.sqlPassword = decrypt(encryptedPw, hwKey);
+                    } catch (Exception e) {
+                        databaseConfig.sqlPassword = "";
+                        // 🎯【預設英文，zh_tw 分流提示】
+                        if ("zh_tw".equalsIgnoreCase(generalConfig.language)) {
+                            logger.error("[MCToDC] 資料庫安全密碼解密失敗，主機硬體特徵不匹配。請還原 database.sqlPassword 設定。");
+                        } else {
+                            logger.error("[MCToDC] SQL Password decryption failed due to hardware signatures mismatch. Please reset database.sqlPassword.");
+                        }
+                    }
                 } else {
                     databaseConfig.sqlPassword = "";
                     logger.error("[MCToDC] Secure database asset (.mctodc-db-secret) missed. Reset your plain password in toml.");

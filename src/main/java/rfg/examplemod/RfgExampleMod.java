@@ -8,6 +8,7 @@ import cpw.mods.fml.common.event.FMLPreInitializationEvent;
 import cpw.mods.fml.common.event.FMLServerStartingEvent;
 import cpw.mods.fml.common.event.FMLServerStoppingEvent;
 import net.minecraft.server.MinecraftServer;
+import net.minecraft.util.ChatComponentText;
 import net.minecraftforge.common.MinecraftForge;
 import org.apache.logging.log4j.Logger;
 import org.apache.logging.log4j.core.Appender;
@@ -24,11 +25,11 @@ import java.nio.charset.StandardCharsets;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.PreparedStatement;
-import java.util.Base64;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 @Mod(
     modid = RfgExampleMod.MODID,
@@ -60,6 +61,10 @@ public class RfgExampleMod {
     public static com.google.gson.JsonObject boundPlayers = new com.google.gson.JsonObject(); 
     private static File bindFile;
     private static String lastChannelMessageId = "0";
+    
+    // // TODO: 建立 HTTP 429 防洪防爆動態原子鎖與冷卻機制
+    private static final AtomicBoolean isPollingInProgress = new AtomicBoolean(false);
+    private static long coolDownUntil = 0L;
 
     @EventHandler
     public void preInit(FMLPreInitializationEvent event) {
@@ -102,42 +107,36 @@ public class RfgExampleMod {
             executor.submit(() -> setupRemoteSQLTable());
         }
 
-        executor.submit(new Runnable() {
-            @Override
-            public void run() {
-                try {
-                    // TODO: 將閘道初始化日誌納入多語系規範
-                    if ("zh_tw".equalsIgnoreCase(ConfigHandler.generalConfig.language)) {
-                        logger.info("[MCToDC] 正在初始化輕量化原生 HTTP REST 閘道...");
-                    } else {
-                        logger.info("[MCToDC] Initializing light-weight native HTTP REST gateway...");
-                    }
-                    
-                    System.setProperty("https.protocols", "TLSv1.2,TLSv1.3");
-                    System.setProperty("jdk.tls.client.protocols", "TLSv1.2,TLSv1.3");
+        executor.submit(() -> {
+            try {
+                if ("zh_tw".equalsIgnoreCase(ConfigHandler.generalConfig.language)) {
+                    logger.info("[MCToDC] 正在初始化輕量化原生 HTTP REST 閘道...");
+                } else {
+                    logger.info("[MCToDC] Initializing light-weight native HTTP REST gateway...");
+                }
+                
+                System.setProperty("https.protocols", "TLSv1.2,TLSv1.3");
+                System.setProperty("jdk.tls.client.protocols", "TLSv1.2,TLSv1.3");
 
-                    String activeNotice = LanguageManager.getDiscordServerStarted();
-                    if (MessageConfigHandler.messages != null && MessageConfigHandler.messages.discordServerStarted != null && !MessageConfigHandler.messages.discordServerStarted.isEmpty()) {
-                        activeNotice = MessageConfigHandler.messages.discordServerStarted;
-                    }
-                    sendNativeChannelMessage(ConfigHandler.channelsConfig.chatChannelID, activeNotice);
+                String activeNotice = LanguageManager.getDiscordServerStarted();
+                if (MessageConfigHandler.messages != null && MessageConfigHandler.messages.discordServerStarted != null && !MessageConfigHandler.messages.discordServerStarted.isEmpty()) {
+                    activeNotice = MessageConfigHandler.messages.discordServerStarted;
+                }
+                sendNativeChannelMessage(ConfigHandler.channelsConfig.chatChannelID, activeNotice);
 
-                    // TODO: 修正圖中第二行硬編碼日誌，對齊多語系分流
-                    if ("zh_tw".equalsIgnoreCase(ConfigHandler.generalConfig.language)) {
-                        logger.info("[MCToDC] 本地資料庫與安全代理閘道已成功加載完畢。");
-                    } else {
-                        logger.info("[MCToDC] Server has loaded local database and secure proxy channel successfully.");
-                    }
-                    
-                    timerExecutor.scheduleAtFixedRate(() -> pollChannelMessages(), 1, 2500, TimeUnit.MILLISECONDS);
-                } catch (Exception e) { logger.error("Gateway link error: " + e.getMessage()); }
-            }
+                if ("zh_tw".equalsIgnoreCase(ConfigHandler.generalConfig.language)) {
+                    logger.info("[MCToDC] 本地資料庫與安全代理閘道已成功加載完畢。");
+                } else {
+                    logger.info("[MCToDC] Server has loaded local database and secure proxy channel successfully.");
+                }
+                
+                timerExecutor.scheduleAtFixedRate(() -> pollChannelMessages(), 1, 2500, TimeUnit.MILLISECONDS);
+            } catch (Exception e) { logger.error("Gateway link error: " + e.getMessage()); }
         });
     }
 
     @EventHandler
     public void serverStopping(FMLServerStoppingEvent event) {
-        // TODO: 修正圖中第一行關服硬編碼日誌，對齊多語系分流
         if ("zh_tw".equalsIgnoreCase(ConfigHandler.generalConfig.language)) {
             logger.info("[MCToDC] 伺服器正在關閉...");
         } else {
@@ -164,6 +163,7 @@ public class RfgExampleMod {
     private static void setupRemoteSQLTable() {
         try {
             Class.forName("com.mysql.jdbc.Driver");
+            // 呼叫具備自癒防禦功能的輕量化對接鏈
             try (Connection conn = DriverManager.getConnection(ConfigHandler.databaseConfig.sqlUrl, ConfigHandler.databaseConfig.sqlUser, ConfigHandler.databaseConfig.sqlPassword)) {
                 String query = "CREATE TABLE IF NOT EXISTS `" + ConfigHandler.databaseConfig.sqlTableName + "` (" +
                         "`username` VARCHAR(64) NOT NULL, " +
@@ -213,16 +213,34 @@ public class RfgExampleMod {
     private void pollChannelMessages() {
         String channelId = ConfigHandler.channelsConfig.chatChannelID;
         if (channelId == null || channelId.equals("0") || channelId.isEmpty()) return;
+        
+        // 🚀【防洪限流防禦一】：如果目前處於 429 被處罰冷卻期，直接跳過不打 API
+        long now = System.currentTimeMillis();
+        if (now < coolDownUntil) return;
+
+        // 🚀【防洪限流防禦二】：利用原子鎖確保同時間只有一個 HTTP Poll 請求在飛，防止請求堆積卡死
+        if (!isPollingInProgress.compareAndSet(false, true)) return;
+
         try {
-            URL url = new URL("https://discord.com/api/v9/channels/" + channelId + "/messages?limit=5");
+            // 透過 limit=10 配合動態歷史指針優化頻寬
+            URL url = new URL("https://discord.com/api/v9/channels/" + channelId + "/messages?limit=10");
             HttpURLConnection conn = (HttpURLConnection) url.openConnection();
             conn.setRequestMethod("GET");
             conn.setRequestProperty("Authorization", "Bot " + ConfigHandler.getBotToken());
             conn.setRequestProperty("User-Agent", "DiscordBot (Minecraft 1.7.10, Native-REST)");
-            conn.setConnectTimeout(1500);
-            conn.setReadTimeout(1500);
+            conn.setConnectTimeout(2000);
+            conn.setReadTimeout(2000);
 
-            if (conn.getResponseCode() == 200) {
+            int responseCode = conn.getResponseCode();
+            
+            // 🚀【防洪限流防禦三】：如果遇到 HTTP 429 Rate Limited，啟動極端防禦避險
+            if (responseCode == 429) {
+                coolDownUntil = System.currentTimeMillis() + 15000L; // 自動進入 15 秒物理冷卻
+                logger.warn("[MCToDC] ⚠️ Detected Discord HTTP 429 Rate Limit. Entering cooling down defense for 15s.");
+                return;
+            }
+
+            if (responseCode == 200) {
                 BufferedReader reader = new BufferedReader(new InputStreamReader(conn.getInputStream(), StandardCharsets.UTF_8));
                 StringBuilder sb = new StringBuilder();
                 String line;
@@ -240,6 +258,7 @@ public class RfgExampleMod {
                         com.google.gson.JsonObject msgObj = messages.get(i).getAsJsonObject();
                         String id = msgObj.get("id").getAsString();
                         
+                        // 動態時間指針判斷：只有比上次收到的 ID 更全新的訊息才放行處理
                         if (id.compareTo(lastChannelMessageId) > 0) {
                             lastChannelMessageId = id;
                             processIncomingMessage(msgObj);
@@ -247,7 +266,12 @@ public class RfgExampleMod {
                     }
                 }
             }
-        } catch (Exception e) {}
+        } catch (Exception e) {
+            // 萬一發生網路波動異常，給予輕微冷卻保護
+            coolDownUntil = System.currentTimeMillis() + 3000L;
+        } finally {
+            isPollingInProgress.set(false); // 解鎖
+        }
     }
 
     private void processIncomingMessage(com.google.gson.JsonObject msgObj) {
@@ -324,7 +348,7 @@ public class RfgExampleMod {
 
         String formatted = formatPattern.replace("%user%", authorName).replace("%message%", content);
         try {
-            MinecraftServer.getServer().getConfigurationManager().sendChatMsg(new net.minecraft.util.ChatComponentText(formatted));
+            MinecraftServer.getServer().getConfigurationManager().sendChatMsg(new ChatComponentText(formatted));
         } catch (Exception e) {}
     }
 
