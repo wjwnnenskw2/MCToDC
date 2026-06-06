@@ -16,7 +16,7 @@ public class DiscordListener {
         String channelId = msgObj.get("channel_id").getAsString();
 
         if (ConfigHandler.generalConfig.debugging) {
-            RfgExampleMod.logger.info("[MCToDC-Debug] Channel packet dispatched to DiscordListener -> [" + authorName + "]: " + content);
+            RfgExampleMod.logger.info("[MCToDC] Dispatched packet directly inside DiscordListener hub from " + authorName);
         }
 
         if (content.startsWith("!verify")) {

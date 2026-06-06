@@ -276,7 +276,7 @@ public class MinecraftListener {
         }
     }
 
-    // 🎯【遺漏一修復：綁定指令訊息同步事件監聽器】
+    // 🎯【漏洞修復一：補齊獨立的指令監聽器事件通道】
     @SubscribeEvent
     public void onCommand(CommandEvent event) {
         if (!ConfigHandler.generalConfig.enabled) return;

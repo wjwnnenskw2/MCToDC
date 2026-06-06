@@ -73,9 +73,9 @@ public class RfgExampleMod {
         ConfigHandler.init(configDir, logger);
         MessageConfigHandler.init(configDir, logger);
 
-        // 🎯【遺漏三修復：落實總開關防線攔截】
+        // 🎯【漏洞修復三：總開關防線完全落實】
         if (!ConfigHandler.generalConfig.enabled) {
-            logger.info("[MCToDC] Mod has been disabled in general configuration profile.");
+            logger.info("[MCToDC] Mod has been disabled in general configuration profile. Stopping initialization.");
             return;
         }
 
@@ -94,6 +94,7 @@ public class RfgExampleMod {
 
     @EventHandler
     public void serverStarting(FMLServerStartingEvent event) {
+        // 🎯【總開關攔截點二】
         if (!ConfigHandler.generalConfig.enabled) return;
 
         MinecraftListener minecraftListener = new MinecraftListener();
@@ -106,7 +107,7 @@ public class RfgExampleMod {
             return;
         }
 
-        // 🎯【遺漏四修復之一：printInviteLink 自動拼接印出連結】
+        // 🎯【漏洞修復四之一：解析 Token 自動拼接並輸出邀請連結】
         if (ConfigHandler.botConfig.printInviteLink) {
             try {
                 String[] segments = activeToken.split("\\.");
@@ -139,10 +140,10 @@ public class RfgExampleMod {
 
                 logger.info(LanguageManager.getLogGatewaySuccess());
                 
-                // 任務一：網路數據輪詢
+                // 定時任務：對話通訊輪詢
                 timerExecutor.scheduleAtFixedRate(() -> pollChannelMessages(), 1, 2500, TimeUnit.MILLISECONDS);
                 
-                // 🎯【遺漏二修復：建立定時 Presence 狀態更新任務】
+                // 🎯【漏洞修復二：建立定時 Presence 狀態更新任務（動態解析線上人數）】
                 long interval = Math.max(10, ConfigHandler.botConfig.statusUpdateInterval);
                 timerExecutor.scheduleAtFixedRate(() -> updateBotPresenceStatus(), 5, interval, TimeUnit.SECONDS);
 
@@ -310,7 +311,7 @@ public class RfgExampleMod {
                         if (id.compareTo(lastChannelMessageId) > 0) {
                             lastChannelMessageId = id;
                             
-                            // 完美移交解耦類別
+                            // 完美引流至處理中樞，消除冗餘
                             DiscordListener.processIncomingMessage(msgObj);
                         }
                     }
@@ -340,7 +341,7 @@ public class RfgExampleMod {
             com.google.gson.JsonObject json = new com.google.gson.JsonObject();
             json.addProperty("content", content);
             
-            // 🎯【遺漏四修復之二：實現 silentReplies 靜音通知 flag】
+            // 🎯【漏洞修復四之二：實現 silentReplies 靜默通知 flag】
             if (ConfigHandler.botConfig.silentReplies) {
                 json.addProperty("flags", 4096);
             }
