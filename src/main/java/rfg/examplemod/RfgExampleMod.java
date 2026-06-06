@@ -70,9 +70,9 @@ public class RfgExampleMod {
             logger.error("Config initialization failed: " + e.getMessage());
         }
 
-        // 🛑 總開關攔截
+        // 🛑 總開關攔截：若設定為 false，直接退出不進行任何核心綁定與加載
         if (!ConfigHandler.generalConfig.enabled) {
-            logger.info("[MCToDC] Module is disabled in config. Skipping core load.");
+            logger.info(LanguageManager.getLogModuleDisabled());
             return;
         }
 
@@ -91,6 +91,7 @@ public class RfgExampleMod {
 
     @EventHandler
     public void serverStarting(FMLServerStartingEvent event) {
+        // 🛑 總開關二次防護
         if (!ConfigHandler.generalConfig.enabled) return;
 
         MinecraftListener minecraftListener = new MinecraftListener();
@@ -99,7 +100,7 @@ public class RfgExampleMod {
 
         String activeToken = ConfigHandler.getBotToken();
         if (activeToken.isEmpty() || ConfigHandler.channelsConfig.chatChannelID.equals("0")) {
-            logger.warn("Bot connection configurations incomplete, proxy service aborted.");
+            logger.warn("[MCToDC] Bot connection configurations incomplete, proxy service aborted.");
             return;
         }
 
@@ -121,11 +122,8 @@ public class RfgExampleMod {
             @Override
             public void run() {
                 try {
-                    if ("zh_tw".equalsIgnoreCase(ConfigHandler.generalConfig.language)) {
-                        logger.info("[MCToDC] 正在初始化輕量化原生 HTTP REST 閘道...");
-                    } else {
-                        logger.info("[MCToDC] Initializing light-weight native HTTP REST gateway...");
-                    }
+                    // 📡 載入多語系初始化日誌
+                    logger.info(LanguageManager.getLogGatewayInitializing());
                     
                     System.setProperty("https.protocols", "TLSv1.2,TLSv1.3");
                     System.setProperty("jdk.tls.client.protocols", "TLSv1.2,TLSv1.3");
@@ -136,20 +134,17 @@ public class RfgExampleMod {
                     }
                     DiscordListener.sendNativeChannelMessage(ConfigHandler.channelsConfig.chatChannelID, activeNotice, false);
 
-                    if ("zh_tw".equalsIgnoreCase(ConfigHandler.generalConfig.language)) {
-                        logger.info("[MCToDC] 本地資料庫與安全代理閘道已成功加載完畢。");
-                    } else {
-                        logger.info("[MCToDC] Server has loaded local database and secure proxy channel successfully.");
-                    }
+                    // 📡 載入多語系成功日誌
+                    logger.info(LanguageManager.getLogGatewaySuccess());
                     
-                    // 將輪詢指向新的 DiscordListener
+                    // 將輪詢指向已解耦的 DiscordListener
                     timerExecutor.scheduleAtFixedRate(() -> DiscordListener.pollChannelMessages(), 1, 2500, TimeUnit.MILLISECONDS);
 
                     // 📡 實作狀態更新 (透過修改頻道主題，最低限制 5 分鐘避免 429 Rate Limit)
                     int interval = Math.max(300, ConfigHandler.botConfig.statusUpdateInterval); 
                     timerExecutor.scheduleAtFixedRate(() -> updateDiscordChannelTopic(), 10, interval, TimeUnit.SECONDS);
 
-                } catch (Exception e) { logger.error("Gateway link error: " + e.getMessage()); }
+                } catch (Exception e) { logger.error("[MCToDC] Gateway link error: " + e.getMessage()); }
             }
         });
     }
@@ -158,11 +153,8 @@ public class RfgExampleMod {
     public void serverStopping(FMLServerStoppingEvent event) {
         if (!ConfigHandler.generalConfig.enabled) return;
 
-        if ("zh_tw".equalsIgnoreCase(ConfigHandler.generalConfig.language)) {
-            logger.info("[MCToDC] 伺服器正在關閉...");
-        } else {
-            logger.info("[MCToDC] Server is shutting down...");
-        }
+        // 📡 載入多語系關閉日誌
+        logger.info(LanguageManager.getLogServerShuttingDown());
 
         String stopNotice = "";
         if (MessageConfigHandler.messages != null && MessageConfigHandler.messages.discordServerStopped != null && !MessageConfigHandler.messages.discordServerStopped.isEmpty()) {
@@ -277,7 +269,7 @@ public class RfgExampleMod {
         } catch (Exception e) {} finally { if (conn != null) conn.disconnect(); }
     }
 
-    // 狀態更新實作
+    // 狀態動態更新實作
     private static void updateDiscordChannelTopic() {
         String channelId = ConfigHandler.channelsConfig.chatChannelID;
         if (channelId == null || channelId.equals("0")) return;

@@ -28,3 +28,7 @@ whitelist.json
 *.iws
 *.DS_Store
 .metals/
+# MCToDC Local Server Data & Secrets
+*-bnd.json
+.mctodc-secret
+.mctodc-db-secret

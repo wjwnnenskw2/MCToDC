@@ -81,4 +81,24 @@ public class LanguageManager {
         }
         return "**" + username + "** has just earned the achievement: [" + achievementName + "]";
     }
+    
+    public static String getLogModuleDisabled() {
+        if ("zh_tw".equalsIgnoreCase(ConfigHandler.generalConfig.language)) return "[MCToDC] 模組在設定檔中已關閉，跳過核心載入。";
+        return "[MCToDC] Module is disabled in config. Skipping core load.";
+    }
+
+    public static String getLogGatewayInitializing() {
+        if ("zh_tw".equalsIgnoreCase(ConfigHandler.generalConfig.language)) return "[MCToDC] 正在初始化輕量化原生 HTTP REST 閘道...";
+        return "[MCToDC] Initializing light-weight native HTTP REST gateway...";
+    }
+
+    public static String getLogGatewaySuccess() {
+        if ("zh_tw".equalsIgnoreCase(ConfigHandler.generalConfig.language)) return "[MCToDC] 本地資料庫與安全代理閘道已成功加載完畢。";
+        return "[MCToDC] Server has loaded local database and secure proxy channel successfully.";
+    }
+
+    public static String getLogServerShuttingDown() {
+        if ("zh_tw".equalsIgnoreCase(ConfigHandler.generalConfig.language)) return "[MCToDC] 伺服器正在關閉...";
+        return "[MCToDC] Server is shutting down...";
+    }
 }
