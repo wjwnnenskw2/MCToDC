@@ -31,8 +31,11 @@ public class MinecraftListener {
             String discordName = "Unknown";
             String discordId = "";
             boolean forceKickDueToLeftServer = false;
+            
+            // 🔒 漏洞防禦核心：標記遠端資料庫是否成功完成了權威性查詢
+            boolean sqlQueryExecutedSuccessfully = false;
 
-            // 1. 先從 SQL 查詢綁定資料
+            // 1. 嘗試進行遠端 SQL 查詢
             if (ConfigHandler.databaseConfig.useRemoteSQL) {
                 try {
                     Class.forName("com.mysql.jdbc.Driver");
@@ -42,6 +45,7 @@ public class MinecraftListener {
                             stmt.setString(1, username);
                             stmt.setString(2, uuid);
                             try (ResultSet rs = stmt.executeQuery()) {
+                                sqlQueryExecutedSuccessfully = true; // 🟢 正常連線並執行完畢
                                 if (rs.next()) {
                                     isVerified = true;
                                     discordId = rs.getString("discord_id");
@@ -51,12 +55,38 @@ public class MinecraftListener {
                         }
                     }
                 } catch (Exception e) {
-                    RfgExampleMod.logger.error("[MCToDC] Asynchronous SQL check failure: " + e.getMessage());
+                    sqlQueryExecutedSuccessfully = false; // 🔴 拋出 Exception，連線故障
+                    RfgExampleMod.logger.error("[MCToDC] SQL Remote failure (Will fallback to local JSON): " + e.getMessage());
                 }
             }
 
-            // 同步到本地 JSON 快取
-            if (isVerified && !RfgExampleMod.boundPlayers.has(username)) {
+            // 情況 A：遠端 SQL 正常執行，且判定該玩家【已經被管理員手動刪除白名單】
+            if (ConfigHandler.databaseConfig.useRemoteSQL && sqlQueryExecutedSuccessfully && !isVerified) {
+                // 如果本地 JSON 還殘留有這個人的快取，必須順手抹除，以遠端權威數據為最高指導原則
+                if (RfgExampleMod.boundPlayers.has(username)) {
+                    RfgExampleMod.boundPlayers.remove(username);
+                    RfgExampleMod.saveBinds();
+                    RfgExampleMod.logger.warn("[MCToDC] Player " + username + " was deleted from Remote SQL. Synchronized and wiped local JSON cache.");
+                }
+            }
+
+            // 情況 B：只有在「沒開啟 SQL」或者「SQL 連線故障斷線 (Exception)」時，才允許讀取本地 JSON 備援
+            if (!isVerified) {
+                boolean allowJsonFallback = !ConfigHandler.databaseConfig.useRemoteSQL || !sqlQueryExecutedSuccessfully;
+                
+                if (allowJsonFallback && RfgExampleMod.boundPlayers.has(username)) {
+                    try {
+                        com.google.gson.JsonObject playerData = RfgExampleMod.boundPlayers.getAsJsonObject(username);
+                        discordId = playerData.get("discordID").getAsString();
+                        discordName = playerData.get("discordName").getAsString();
+                        isVerified = true;
+                        RfgExampleMod.logger.info("[MCToDC] Discovered local JSON cache for " + username + " during Remote SQL breakdown fallback session.");
+                    } catch (Exception e) {}
+                }
+            }
+
+            // 2. 如果是遠端新綁定成功、本地還沒快取到的資料，進行回填
+            if (isVerified && sqlQueryExecutedSuccessfully && !RfgExampleMod.boundPlayers.has(username)) {
                 try {
                     com.google.gson.JsonObject playerData = new com.google.gson.JsonObject();
                     playerData.addProperty("discordID", discordId);
@@ -67,25 +97,14 @@ public class MinecraftListener {
                 } catch (Exception e) {}
             }
 
-            // 2. 如果 SQL 沒查到，從本地 JSON 快取查
-            if (!isVerified) {
-                if (RfgExampleMod.boundPlayers.has(username)) {
-                    try {
-                        com.google.gson.JsonObject playerData = RfgExampleMod.boundPlayers.getAsJsonObject(username);
-                        discordId = playerData.get("discordID").getAsString();
-                        discordName = playerData.get("discordName").getAsString();
-                        isVerified = true;
-                    } catch (Exception e) {}
-                }
-            }
-
-            // 3. 核心校驗：校驗退群狀態
+            // 3. 跨平台二次校驗：檢查玩家是否還在 Discord 伺服器群組中
             if (isVerified) {
                 boolean isInServer = DiscordListener.isUserInDiscordServer(discordId);
                 if (!isInServer) {
                     isVerified = false;
-                    forceKickDueToLeftServer = true; 
+                    forceKickDueToLeftServer = true; // 標記為退群踢出
                     
+                    // 徹底除名
                     RfgExampleMod.boundPlayers.remove(username);
                     RfgExampleMod.saveBinds();
                     
@@ -101,7 +120,7 @@ public class MinecraftListener {
                 }
             }
 
-            // 4. 最後的准入判定
+            // 4. 最後准入判定
             final boolean finalVerified = isVerified;
             final String finalDiscordName = discordName;
             final boolean finalLeftKick = forceKickDueToLeftServer;
