@@ -10,7 +10,6 @@ import java.nio.charset.StandardCharsets;
 
 public class DiscordListener {
     
-    // 📡 核心修正：初始設為 "0"，第一次輪詢後會鎖定最新訊息，之後透過 after 嚴密抓取，絕不丟包
     private static String lastChannelMessageId = "0";
 
     public static boolean isUserInDiscordServer(String discordUserId) {
@@ -42,7 +41,6 @@ public class DiscordListener {
         String channelId = ConfigHandler.channelsConfig.chatChannelID;
         if (channelId == null || channelId.equals("0") || channelId.isEmpty()) return;
         try {
-            // 📡 核心修正：如果已有歷史最新訊息 ID，引進 after 分頁，確保洗頻時絕不吃掉驗證指令
             String urlStr = "https://discord.com/api/v9/channels/" + channelId + "/messages?limit=10";
             if (!lastChannelMessageId.equals("0")) {
                 urlStr += "&after=" + lastChannelMessageId;
@@ -65,30 +63,24 @@ public class DiscordListener {
 
                 com.google.gson.JsonArray messages = new com.google.gson.JsonParser().parse(sb.toString()).getAsJsonArray();
                 if (messages.size() > 0) {
-                    // 如果是伺服器剛啟動的第一次輪詢，鎖定最新一條訊息作為基線，防範歷史舊訊息刷屏
                     if (lastChannelMessageId.equals("0")) {
                         lastChannelMessageId = messages.get(0).getAsJsonObject().get("id").getAsString();
                         return;
                     }
 
-                    // 因為 API 帶 after 參數時，回傳陣列的 index=0 是最舊的訊息，所以改為正序解析
                     for (int i = 0; i < messages.size(); i++) {
                         com.google.gson.JsonObject msgObj = messages.get(i).getAsJsonObject();
                         String id = msgObj.get("id").getAsString();
                         
-                        // 雙重安全校驗：確保訊息 ID 比基線新
                         if (id.compareTo(lastChannelMessageId) > 0) {
-                            lastChannelMessageId = id; // 實時推動輸送帶指標
+                            lastChannelMessageId = id; 
                             processIncomingMessage(msgObj);
                         }
                     }
                 }
             }
-        } catch (Exception e) {
-            if (ConfigHandler.generalConfig.debugging) {
-                RfgExampleMod.logger.error("[MCToDC] Poll Error: " + e.getMessage());
-                e.printStackTrace();
-            }
+        } catch (Throwable e) {
+            if (ConfigHandler.generalConfig.debugging) e.printStackTrace();
         }
     }
 
@@ -96,13 +88,15 @@ public class DiscordListener {
         com.google.gson.JsonObject author = msgObj.getAsJsonObject("author");
         if (author.has("bot") && author.get("bot").getAsBoolean()) return;
 
+        // 🛡️ 修復：防範 Discord 傳送圖片/純貼圖等多媒體 Payload 引發空指針崩潰
+        if (!msgObj.has("content") || msgObj.get("content").isJsonNull()) return;
+
         String content = msgObj.get("content").getAsString().trim();
         String authorName = author.get("username").getAsString();
         String authorId = author.get("id").getAsString();
         String messageId = msgObj.get("id").getAsString();
         String channelId = msgObj.get("channel_id").getAsString();
 
-        // 🔓 處理 !verify 指令
         if (content.startsWith("!verify")) {
             RfgExampleMod.getExecutor().submit(() -> deleteDiscordMessage(channelId, messageId));
 
@@ -114,40 +108,80 @@ public class DiscordListener {
                 return;
             }
 
-            String inputCode = parts[1];
-            String mcName = null;
-            String mcUuid = "";
+            String argument = parts[1];
+            
+            // 📡 補齊項目：判斷是 6 位數驗證碼（線上驗證）還是遊戲 ID（離線預綁定）
+            if (argument.matches("\\d{6}")) {
+                // 機制 A：線上驗證碼對齊
+                String mcName = null;
+                String mcUuid = "";
 
-            for (java.util.Map.Entry<String, String[]> entry : RfgExampleMod.pendingVerifications.entrySet()) {
-                if (entry.getValue()[0].equals(inputCode)) {
-                    mcName = entry.getKey();
-                    mcUuid = entry.getValue()[1];
-                    break;
+                for (java.util.Map.Entry<String, String[]> entry : RfgExampleMod.pendingVerifications.entrySet()) {
+                    if (entry.getValue()[0].equals(argument)) {
+                        mcName = entry.getKey();
+                        mcUuid = entry.getValue()[1];
+                        break;
+                    }
                 }
+
+                if (mcName == null) {
+                    String err = MessageConfigHandler.messages.discordVerifyInvalidError.isEmpty() ? 
+                                 LanguageManager.getDiscordVerifyInvalidError() : MessageConfigHandler.messages.discordVerifyInvalidError;
+                    sendNativeChannelMessage(channelId, err, ConfigHandler.botConfig.silentReplies);
+                    return;
+                }
+
+                RfgExampleMod.savePlayerBindingData(mcName, mcUuid, authorId, authorName);
+                RfgExampleMod.pendingVerifications.remove(mcName);
+
+                String succ = MessageConfigHandler.messages.discordVerifySuccess.isEmpty() ? 
+                              LanguageManager.getDiscordVerifySuccess(mcName) : MessageConfigHandler.messages.discordVerifySuccess;
+                sendNativeChannelMessage(channelId, succ.replace("%user%", mcName), ConfigHandler.botConfig.silentReplies);
+            } else {
+                // 機制 B：離線預綁定（免先進服被踢，直接向 Mojang API 發送正版驗證查詢）
+                final String mcTargetName = argument;
+                RfgExampleMod.getExecutor().submit(() -> {
+                    try {
+                        URL mojangUrl = new URL("https://api.mojang.com/users/profiles/minecraft/" + mcTargetName);
+                        HttpURLConnection mConn = (HttpURLConnection) mojangUrl.openConnection();
+                        mConn.setRequestMethod("GET");
+                        mConn.setConnectTimeout(3000);
+                        mConn.setReadTimeout(3000);
+
+                        if (mConn.getResponseCode() == 200) {
+                            BufferedReader mReader = new BufferedReader(new InputStreamReader(mConn.getInputStream(), StandardCharsets.UTF_8));
+                            StringBuilder mSb = new StringBuilder();
+                            String mLine;
+                            while ((mLine = mReader.readLine()) != null) mSb.append(mLine);
+                            mReader.close();
+
+                            com.google.gson.JsonObject mojangJson = new com.google.gson.JsonParser().parse(mSb.toString()).getAsJsonObject();
+                            String rawUuid = mojangJson.get("id").getAsString();
+                            // 標準化 UUID 格式 (加上 Dash)
+                            String formattedUuid = rawUuid.replaceFirst("(\\w{8})(\\w{4})(\\w{4})(\\w{4})(\\w{12})", "$1-$2-$3-$4-$5");
+                            String officialName = mojangJson.get("name").getAsString();
+
+                            RfgExampleMod.savePlayerBindingData(officialName, formattedUuid, authorId, authorName);
+                            sendNativeChannelMessage(channelId, "✅ **離線預綁定成功**：已成功預先將您的 Discord 帳號鎖定綁定至正版遊戲帳號 **" + officialName + "**！現在您可以隨時進入遊戲了。", ConfigHandler.botConfig.silentReplies);
+                        } else {
+                            // 離線預綁定 Fallback：非正版或 Mojang 伺服器超時，使用本地虛擬 UUID 補丁生成
+                            String offlineUuid = java.util.UUID.nameUUIDFromBytes(("OfflinePlayer:" + mcTargetName).getBytes(StandardCharsets.UTF_8)).toString();
+                            RfgExampleMod.savePlayerBindingData(mcTargetName, offlineUuid, authorId, authorName);
+                            sendNativeChannelMessage(channelId, "⚠️ **離線預綁定完成 (非正版/離線模式模式)**：未偵測到正版 ID，已為您生成本地 UUID 並完成與 **" + mcTargetName + "** 的預綁定！", ConfigHandler.botConfig.silentReplies);
+                        }
+                    } catch (Exception e) {
+                        sendNativeChannelMessage(channelId, "❌ **預綁定失敗**：向驗證網關通訊時發生異常，請稍後再試。", true);
+                    }
+                });
             }
-
-            if (mcName == null) {
-                String err = MessageConfigHandler.messages.discordVerifyInvalidError.isEmpty() ? 
-                             LanguageManager.getDiscordVerifyInvalidError() : MessageConfigHandler.messages.discordVerifyInvalidError;
-                sendNativeChannelMessage(channelId, err, ConfigHandler.botConfig.silentReplies);
-                return;
-            }
-
-            RfgExampleMod.savePlayerBindingData(mcName, mcUuid, authorId, authorName);
-            RfgExampleMod.pendingVerifications.remove(mcName);
-
-            String succ = MessageConfigHandler.messages.discordVerifySuccess.isEmpty() ? 
-                          LanguageManager.getDiscordVerifySuccess(mcName) : MessageConfigHandler.messages.discordVerifySuccess;
-            sendNativeChannelMessage(channelId, succ.replace("%user%", mcName), ConfigHandler.botConfig.silentReplies);
             return;
         }
 
-        // 🔗 補齊：處理 !unlink 自願解綁指令
+        // !unlink 自願解綁指令
         if (content.equalsIgnoreCase("!unlink")) {
             RfgExampleMod.getExecutor().submit(() -> deleteDiscordMessage(channelId, messageId));
             
             String targetMcName = null;
-            // 遍歷本地 JSON 尋找這個 Discord ID 綁定的 Minecraft 帳號
             for (java.util.Map.Entry<String, com.google.gson.JsonElement> entry : RfgExampleMod.boundPlayers.entrySet()) {
                 try {
                     com.google.gson.JsonObject pData = entry.getValue().getAsJsonObject();
@@ -163,22 +197,22 @@ public class DiscordListener {
                 return;
             }
 
-            // A. 從本地 JSON 快取中刪除
             RfgExampleMod.boundPlayers.remove(targetMcName);
             RfgExampleMod.saveBinds();
 
-            // B. 如果有開遠端 SQL，非同步發送 SQL 刪除指令
             if (ConfigHandler.databaseConfig.useRemoteSQL) {
                 final String finalTarget = targetMcName;
                 RfgExampleMod.getExecutor().submit(() -> {
                     try {
-                        java.sql.Connection conn = java.sql.DriverManager.getConnection(ConfigHandler.databaseConfig.sqlUrl, ConfigHandler.databaseConfig.sqlUser, ConfigHandler.databaseConfig.sqlPassword);
-                        String delQuery = "DELETE FROM `" + ConfigHandler.databaseConfig.sqlTableName + "` WHERE `username` = ?;";
-                        try (java.sql.PreparedStatement delStmt = conn.prepareStatement(delQuery)) {
-                            delStmt.setString(1, finalTarget);
-                            delStmt.executeUpdate();
+                        java.sql.Connection conn = rfg.examplemod.RfgExampleMod.getSQLConnection();
+                        if (conn != null) {
+                            String delQuery = "DELETE FROM `" + ConfigHandler.databaseConfig.sqlTableName + "` WHERE `username` = ?;";
+                            try (java.sql.PreparedStatement delStmt = conn.prepareStatement(delQuery)) {
+                                delStmt.setString(1, finalTarget);
+                                delStmt.executeUpdate();
+                            }
+                            conn.close();
                         }
-                        conn.close();
                     } catch (Exception e) {
                         RfgExampleMod.logger.error("[MCToDC] Failed to unlink from remote SQL: " + e.getMessage());
                     }
@@ -189,7 +223,7 @@ public class DiscordListener {
             return;
         }
 
-        // 一般玩家對話轉發至遊戲內
+        // 轉發 Discord 對話
         String formatPattern = MessageConfigHandler.messages.discordToMinecraftChat;
         if (formatPattern == null || formatPattern.isEmpty()) formatPattern = "%player%: %message%";
         String formatted = formatPattern.replace("%user%", authorName).replace("%message%", content);

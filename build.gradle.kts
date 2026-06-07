@@ -52,12 +52,13 @@ repositories {
 dependencies {
     val shadow by configurations
 
+    // 🔒 同時引入舊版 (5.1.x) 與現代化 (8.x) 驅動，達成動態向下相容
     shadow("mysql:mysql-connector-java:5.1.49")
     implementation("mysql:mysql-connector-java:5.1.49")
-
-    // 🗑️ 已經移除臃腫的 JDA 與相關語音模組，純淨原生 REST API 啟動！
     
-    // 保留 JSON 解析與 TOML 設定檔讀取
+    shadow("com.mysql:mysql-connector-j:8.3.0")
+    implementation("com.mysql:mysql-connector-j:8.3.0")
+
     shadow("com.google.code.gson:gson:2.8.9")
     implementation("com.google.code.gson:gson:2.8.9")
 

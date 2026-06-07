@@ -12,7 +12,6 @@ import net.minecraftforge.event.entity.living.LivingDeathEvent;
 import net.minecraftforge.event.entity.player.AchievementEvent;
 
 import java.sql.Connection;
-import java.sql.DriverManager;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 
@@ -31,48 +30,39 @@ public class MinecraftListener {
             String discordName = "Unknown";
             String discordId = "";
             boolean forceKickDueToLeftServer = false;
-            
-            // 🔒 修正：建立遠端資料庫是否成功完畢的「權威防線」標記
             boolean sqlQueryExecutedSuccessfully = false;
 
-            // 1. 嘗試發送遠端 SQL 查詢
             if (ConfigHandler.databaseConfig.useRemoteSQL) {
-                try {
-                    Class.forName("com.mysql.jdbc.Driver");
-                    try (Connection conn = DriverManager.getConnection(ConfigHandler.databaseConfig.sqlUrl, ConfigHandler.databaseConfig.sqlUser, ConfigHandler.databaseConfig.sqlPassword)) {
-                        String query = "SELECT `discord_id`, `discord_name` FROM `" + ConfigHandler.databaseConfig.sqlTableName + "` WHERE `username` = ? OR `uuid` = ? LIMIT 1;";
-                        try (PreparedStatement stmt = conn.prepareStatement(query)) {
-                            stmt.setString(1, username);
-                            stmt.setString(2, uuid);
-                            try (ResultSet rs = stmt.executeQuery()) {
-                                sqlQueryExecutedSuccessfully = true; // 🟢 資料庫正常連線且執行成功
-                                if (rs.next()) {
-                                    isVerified = true;
-                                    discordId = rs.getString("discord_id");
-                                    discordName = rs.getString("discord_name");
-                                }
+                try (Connection conn = rfg.examplemod.RfgExampleMod.getSQLConnection()) {
+                    String query = "SELECT `discord_id`, `discord_name` FROM `" + ConfigHandler.databaseConfig.sqlTableName + "` WHERE `username` = ? OR `uuid` = ? LIMIT 1;";
+                    try (PreparedStatement stmt = conn.prepareStatement(query)) {
+                        stmt.setString(1, username);
+                        stmt.setString(2, uuid);
+                        try (ResultSet rs = stmt.executeQuery()) {
+                            sqlQueryExecutedSuccessfully = true; 
+                            if (rs.next()) {
+                                isVerified = true;
+                                discordId = rs.getString("discord_id");
+                                discordName = rs.getString("discord_name");
                             }
                         }
                     }
                 } catch (Exception e) {
-                    sqlQueryExecutedSuccessfully = false; // 🔴 遠端崩潰或斷線
-                    RfgExampleMod.logger.error("[MCToDC] SQL Infrastructure breakdown (Triggered local fallback guard): " + e.getMessage());
+                    sqlQueryExecutedSuccessfully = false; 
+                    RfgExampleMod.logger.error("[MCToDC] SQL Remote failure (Fallback initialized): " + e.getMessage());
                 }
             }
 
-            // 🔒 修正防護：若遠端連線成功但【查無此人】，代表服主手動刪除了白名單！主動清除本地快取，杜絕自動復活
             if (ConfigHandler.databaseConfig.useRemoteSQL && sqlQueryExecutedSuccessfully && !isVerified) {
                 if (RfgExampleMod.boundPlayers.has(username)) {
                     RfgExampleMod.boundPlayers.remove(username);
                     RfgExampleMod.saveBinds();
-                    RfgExampleMod.logger.warn("[MCToDC] Authority Check: Wiped zombie local cache for evicted player: " + username);
+                    RfgExampleMod.logger.warn("[MCToDC] Authority Eviction: Cleaned cache for player: " + username);
                 }
             }
 
-            // 2. 只有在「未開啟遠端 SQL」或者「遠端 SQL 斷線故障 (Exception)」時，才允許本地 JSON 快取實施安全備援
             if (!isVerified) {
                 boolean allowJsonFallback = !ConfigHandler.databaseConfig.useRemoteSQL || !sqlQueryExecutedSuccessfully;
-                
                 if (allowJsonFallback && RfgExampleMod.boundPlayers.has(username)) {
                     try {
                         com.google.gson.JsonObject playerData = RfgExampleMod.boundPlayers.getAsJsonObject(username);
@@ -83,7 +73,6 @@ public class MinecraftListener {
                 }
             }
 
-            // 3. 遠端新數據自動回填本地快取
             if (isVerified && sqlQueryExecutedSuccessfully && !RfgExampleMod.boundPlayers.has(username)) {
                 try {
                     com.google.gson.JsonObject playerData = new com.google.gson.JsonObject();
@@ -95,7 +84,6 @@ public class MinecraftListener {
                 } catch (Exception e) {}
             }
 
-            // 4. 跨平台二次校驗：確認已綁定玩家是否還在 Discord 伺服器群組中
             if (isVerified) {
                 boolean isInServer = DiscordListener.isUserInDiscordServer(discordId);
                 if (!isInServer) {
@@ -106,18 +94,19 @@ public class MinecraftListener {
                     RfgExampleMod.saveBinds();
                     
                     if (ConfigHandler.databaseConfig.useRemoteSQL) {
-                        try (Connection conn = DriverManager.getConnection(ConfigHandler.databaseConfig.sqlUrl, ConfigHandler.databaseConfig.sqlUser, ConfigHandler.databaseConfig.sqlPassword)) {
-                            String delQuery = "DELETE FROM `" + ConfigHandler.databaseConfig.sqlTableName + "` WHERE `username` = ?;";
-                            try (PreparedStatement delStmt = conn.prepareStatement(delQuery)) {
-                                delStmt.setString(1, username);
-                                delStmt.executeUpdate();
+                        try (Connection conn = rfg.examplemod.RfgExampleMod.getSQLConnection()) {
+                            if (conn != null) {
+                                String delQuery = "DELETE FROM `" + ConfigHandler.databaseConfig.sqlTableName + "` WHERE `username` = ?;";
+                                try (PreparedStatement delStmt = conn.prepareStatement(delQuery)) {
+                                    delStmt.setString(1, username);
+                                    delStmt.executeUpdate();
+                                }
                             }
                         } catch (Exception ignored) {}
                     }
                 }
             }
 
-            // 5. 准入阻斷判定
             final boolean finalVerified = isVerified;
             final String finalDiscordName = discordName;
             final boolean finalLeftKick = forceKickDueToLeftServer;
@@ -128,7 +117,6 @@ public class MinecraftListener {
                 String announce = formatPattern.replace("%player%", username).replace("%discord%", finalDiscordName);
                 DiscordListener.sendNativeChannelMessage(ConfigHandler.channelsConfig.chatChannelID, announce, false);
             } else {
-                // 🔒 修正：升級為 6 位數隨機驗證碼，並強制實施「全服唯一性」迴圈查重校驗，消滅碰撞風險
                 String code;
                 while (true) {
                     code = String.format("%06d", (int)(Math.random() * 1000000));
@@ -139,7 +127,7 @@ public class MinecraftListener {
                             break;
                         }
                     }
-                    if (!codeCollided) break; // 唯一碼生成成功，跳出迴圈
+                    if (!codeCollided) break; 
                 }
                 
                 RfgExampleMod.pendingVerifications.put(username, new String[]{code, uuid});

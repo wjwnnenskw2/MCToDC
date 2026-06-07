@@ -21,8 +21,8 @@ import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.sql.Connection;
 import java.sql.DriverManager;
-import java.sql.PreparedStatement;
 import java.util.Base64;
+import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
@@ -54,9 +54,26 @@ public class RfgExampleMod {
         return t;
     });
 
+    // 📡 核心加固：建立日誌非同步緩衝佇列，阻斷 429 速率限制頻率爆擊
+    private static final ConcurrentLinkedQueue<String> consoleLogBuffer = new ConcurrentLinkedQueue<>();
+
     public static final java.util.Map<String, String[]> pendingVerifications = new java.util.concurrent.ConcurrentHashMap<>();
     public static com.google.gson.JsonObject boundPlayers = new com.google.gson.JsonObject(); 
     private static File bindFile;
+
+    public static java.sql.Connection getSQLConnection() throws Exception {
+        // 🛡️ 修復：動態調配並自我調試相容現代 MySQL 8+ 驅動程序與舊版驅動程序
+        try {
+            Class.forName("com.mysql.cj.jdbc.Driver");
+        } catch (ClassNotFoundException e) {
+            Class.forName("com.mysql.jdbc.Driver");
+        }
+        String url = ConfigHandler.databaseConfig.sqlUrl;
+        if (!url.contains("serverTimezone=")) {
+            url += (url.contains("?") ? "&" : "?") + "serverTimezone=UTC&useSSL=false&allowPublicKeyRetrieval=true";
+        }
+        return DriverManager.getConnection(url, ConfigHandler.databaseConfig.sqlUser, ConfigHandler.databaseConfig.sqlPassword);
+    }
 
     @EventHandler
     public void preInit(FMLPreInitializationEvent event) {
@@ -126,11 +143,25 @@ public class RfgExampleMod {
 
                     logger.info(LanguageManager.getLogGatewaySuccess());
                     
-                    // 完美指向 DiscordListener 的輪詢
-                    timerExecutor.scheduleAtFixedRate(() -> DiscordListener.pollChannelMessages(), 1, 2500, TimeUnit.MILLISECONDS);
+                    // 🛡️ 核心加固：最外層加入頂層 Throwable 捕捉，保證線程永不因未捕獲異常而意外中斷死亡
+                    timerExecutor.scheduleAtFixedRate(() -> {
+                        try { DiscordListener.pollChannelMessages(); } 
+                        catch (Throwable t) { if (ConfigHandler.generalConfig.debugging) t.printStackTrace(); }
+                    }, 1, 2500, TimeUnit.MILLISECONDS);
 
                     int interval = Math.max(300, ConfigHandler.botConfig.statusUpdateInterval); 
-                    timerExecutor.scheduleAtFixedRate(() -> updateDiscordChannelTopic(), 10, interval, TimeUnit.SECONDS);
+                    timerExecutor.scheduleAtFixedRate(() -> {
+                        try { updateDiscordChannelTopic(); } 
+                        catch (Throwable t) { if (ConfigHandler.generalConfig.debugging) t.printStackTrace(); }
+                    }, 10, interval, TimeUnit.SECONDS);
+
+                    // 🛡️ 核心加固：啟動每 1.5 秒執行一次的非同步緩衝日誌拼接打包發送任務（極限壓制 429 速率限制）
+                    if (ConfigHandler.chatConfig.sendConsoleMessages) {
+                        timerExecutor.scheduleAtFixedRate(() -> {
+                            try { flushConsoleLogBuffer(); } 
+                            catch (Throwable t) { if (ConfigHandler.generalConfig.debugging) t.printStackTrace(); }
+                        }, 2, 1500, TimeUnit.MILLISECONDS);
+                    }
 
                 } catch (Exception e) {}
             }
@@ -151,31 +182,27 @@ public class RfgExampleMod {
     }
 
     private static void setupRemoteSQLTable() {
-        try {
-            Class.forName("com.mysql.jdbc.Driver");
-            try (Connection conn = DriverManager.getConnection(ConfigHandler.databaseConfig.sqlUrl, ConfigHandler.databaseConfig.sqlUser, ConfigHandler.databaseConfig.sqlPassword)) {
-                String query = "CREATE TABLE IF NOT EXISTS `" + ConfigHandler.databaseConfig.sqlTableName + "` (" +
-                        "`username` VARCHAR(64) NOT NULL, `uuid` VARCHAR(64) NOT NULL, `discord_id` VARCHAR(64) NOT NULL, `discord_name` VARCHAR(64) NOT NULL, " +
-                        "PRIMARY KEY (`username`), KEY `uuid_idx` (`uuid`)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;";
-                try (PreparedStatement stmt = conn.prepareStatement(query)) {
-                    stmt.executeUpdate();
-                    logger.info("[MCToDC] Relational SQL table structure synchronized successfully.");
-                }
+        try (Connection conn = getSQLConnection()) {
+            String query = "CREATE TABLE IF NOT EXISTS `" + ConfigHandler.databaseConfig.sqlTableName + "` (" +
+                    "`username` VARCHAR(64) NOT NULL, `uuid` VARCHAR(64) NOT NULL, `discord_id` VARCHAR(64) NOT NULL, `discord_name` VARCHAR(64) NOT NULL, " +
+                    "PRIMARY KEY (`username`), KEY `uuid_idx` (`uuid`)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;";
+            try (java.sql.PreparedStatement stmt = conn.prepareStatement(query)) {
+                stmt.executeUpdate();
+                logger.info("[MCToDC] Relational SQL table structure synchronized successfully.");
             }
-        } catch (Exception e) {}
+        } catch (Exception e) {
+            logger.error("[MCToDC] SQL Sync failed: " + e.getMessage());
+        }
     }
 
     public static void savePlayerBindingData(String username, String uuid, String discordId, String discordName) {
         if (ConfigHandler.databaseConfig.useRemoteSQL) {
             executor.submit(() -> {
-                try {
-                    Class.forName("com.mysql.jdbc.Driver");
-                    try (Connection conn = DriverManager.getConnection(ConfigHandler.databaseConfig.sqlUrl, ConfigHandler.databaseConfig.sqlUser, ConfigHandler.databaseConfig.sqlPassword)) {
-                        String query = "REPLACE INTO `" + ConfigHandler.databaseConfig.sqlTableName + "` (`username`, `uuid`, `discord_id`, `discord_name`) VALUES (?, ?, ?, ?);";
-                        try (PreparedStatement stmt = conn.prepareStatement(query)) {
-                            stmt.setString(1, username); stmt.setString(2, uuid); stmt.setString(3, discordId); stmt.setString(4, discordName);
-                            stmt.executeUpdate();
-                        }
+                try (Connection conn = getSQLConnection()) {
+                    String query = "REPLACE INTO `" + ConfigHandler.databaseConfig.sqlTableName + "` (`username`, `uuid`, `discord_id`, `discord_name`) VALUES (?, ?, ?, ?);";
+                    try (java.sql.PreparedStatement stmt = conn.prepareStatement(query)) {
+                        stmt.setString(1, username); stmt.setString(2, uuid); stmt.setString(3, discordId); stmt.setString(4, discordName);
+                        stmt.executeUpdate();
                     }
                 } catch (Exception e) {}
             });
@@ -197,30 +224,57 @@ public class RfgExampleMod {
                 String logMessage = logEvent.getMessage().getFormattedMessage();
                 if (logMessage.contains("[MCToDC") || logMessage.contains("Discord")) return;
 
-                executor.submit(() -> {
-                    String wh = ConfigHandler.channelsConfig.consoleWebhook;
-                    if (wh != null && !wh.trim().isEmpty() && !wh.equals("0") && wh.startsWith("http")) {
-                        sendNativeHttpWebhook(wh, "Server Console", logMessage);
-                    } else {
-                        String cid = ConfigHandler.channelsConfig.consoleChannelID;
-                        if (cid != null && !cid.equals("0") && !cid.isEmpty()) {
-                            DiscordListener.sendNativeChannelMessage(cid, "`" + logMessage + "`", false);
-                        }
-                    }
-                });
+                // 🛡️ 修復：絕不執行高頻Rest請求，只將Log丟入非同步緩衝隊列，0延遲、絕不卡主執行緒
+                consoleLogBuffer.add(logMessage);
             }
         };
         consoleAppender.start();
         rootLogger.addAppender(consoleAppender);
     }
 
+    private static void flushConsoleLogBuffer() {
+        // 🛡️ 修復：高吞吐量日誌合併打包發送實作（每 1.5 秒將隊列內堆積的所有 Log 壓縮成單一大 Markdown 區塊發送）
+        if (consoleLogBuffer.isEmpty()) return;
+
+        String webhookUrl = ConfigHandler.channelsConfig.consoleWebhook;
+        String cid = ConfigHandler.channelsConfig.consoleChannelID;
+        boolean hasWebhook = (webhookUrl != null && !webhookUrl.trim().isEmpty() && !webhookUrl.equals("0") && webhookUrl.startsWith("http"));
+        
+        StringBuilder chunk = new StringBuilder();
+        String line;
+        
+        while ((line = consoleLogBuffer.poll()) != null) {
+            // 過濾顏色與異常亂碼
+            line = line.replaceAll("\u001B\\[[;\\d]*m", "");
+            if (chunk.length() + line.length() + 5 > 1900) {
+                // 超過 Discord 單條訊息 2000 字元限制，進行分批切片發送
+                sendCompiledLogChunk(chunk.toString(), webhookUrl, cid, hasWebhook);
+                chunk.setLength(0);
+            }
+            chunk.append(line).append("\n");
+        }
+        
+        if (chunk.length() > 0) {
+            sendCompiledLogChunk(chunk.toString(), webhookUrl, cid, hasWebhook);
+        }
+    }
+
+    private static void sendCompiledLogChunk(String body, String wh, String cid, boolean useWebhook) {
+        String wrappedLog = "```js\n" + body + "```";
+        if (useWebhook) {
+            sendNativeHttpWebhook(wh, "Server Console", wrappedLog);
+        } else if (cid != null && !cid.equals("0") && !cid.isEmpty()) {
+            DiscordListener.sendNativeChannelMessage(cid, wrappedLog, false);
+        }
+    }
+
     public static void sendNativeHttpWebhook(String webhookUrl, String username, String content) {
         if (webhookUrl == null || webhookUrl.trim().isEmpty() || !webhookUrl.startsWith("http")) return;
         HttpURLConnection conn = null;
         try {
-            if (content.length() > 1800) content = content.substring(0, 1800) + "... (Truncated)";
             com.google.gson.JsonObject json = new com.google.gson.JsonObject();
-            json.addProperty("username", username); json.addProperty("content", content);
+            json.addProperty("username", username); 
+            json.addProperty("content", content);
             byte[] payload = json.toString().getBytes(StandardCharsets.UTF_8);
 
             URL url = new URL(webhookUrl);
